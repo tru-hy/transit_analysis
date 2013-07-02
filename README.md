@@ -57,3 +57,15 @@ script by eg `ctrl-c` doesn't work as the psql transaction gets rolled back.
 **NOTE!** The scripts/db schema currently don't check for duplicates mostly for
 performance and flexibility in testing. So to avoid duplicates, clear the database
 (or relevant tables) between importing.
+
+### Process data
+
+To "snap" (actually does marginally smarter filtering) the recorded traces to
+their paths, run
+
+	python2 utils/filter_routes.py filter-routes \
+	    --uri=postgres://transit:transit@/transit
+
+The current HSL live data is quite buggy in its mapping to departures and the
+algorithm tries to do some sanity checking to pick the proper/likely real
+trace. This also means that some (lots of) data gets discarded.
