@@ -53,6 +53,9 @@ departure = Table("transit_departure", metadata,
 	Column('shape', String(255)),
 	Index('departure_shape_idx', 'shape'),
 	TraceReference(),
+	Column('routed_trace', Integer,
+		ForeignKey("coordinate_trace.id"),
+		nullable=True),
 	Column('attributes', HSTORE)
 	)
 
