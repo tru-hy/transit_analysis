@@ -19,5 +19,5 @@ departure_type = namedtuple("departure", (
 
 def departure_tuple_to_row(dep):
 	values = dep._asdict()
-	values['departure_id'] = departure_key(dep)
+	values['departure_id'] = departure_record_key(dep)
 	return values

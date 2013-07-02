@@ -12,12 +12,6 @@ from dateutil import rrule
 from transit_analysis import schema
 from transit_analysis.utils.hsl import *
 
-def departure_key(dep):
-	return "/".join(map(str, (
-		dep.route_variant,
-		dep.direction,
-		dep.departure_time)))
-
 def get_departure_record(row):
 	route_variant = row.trip_id.split('_')[0]
 	route = row.route_id
@@ -26,14 +20,6 @@ def get_departure_record(row):
 	attr = {"gtfs_"+row._fields[i]: str(row[i]) for i in range(len(row))}
 
 	return departure_type(route, route_variant, direction, row.departure_time, shape, attr)
-
-def upsert_departure_record(row, db):
-	# TODO: Actually upsert
-	tbl = db.tables['transit_departure']
-	record = get_departure_record(row)
-	values = departure_type._asdict()
-	values['departure_id'] = departure_key(record)
-	tbl.insert(values=values).execute()
 
 class NamedTupleCsvReader:
 	def __init__(self, *args, **kwargs):
