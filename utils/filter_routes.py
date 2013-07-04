@@ -12,15 +12,10 @@ import scipy.signal
 import scipy.ndimage
 
 from transit_analysis import schema
+from transit_analysis.ext.obs_splines import \
+	smooth1d_grid_l1_l2_missing, smooth1d_grid_l1_l2
 
 coord_proj = pyproj.Proj(init="EPSG:3857")
-
-#shape = "1007B_20080707_2"
-#shape = "1008_20121001_2"
-#shape = "1001_20110815_2"
-#shape = "1007A_20080707_1"
-#shape = "1006_20121001_1"
-shape = "1009_20120813_1"
 
 class RouteException(Exception): pass
 
@@ -47,7 +42,8 @@ def find_approx_monotonic_blocks(dx):
 	changes = list(np.flatnonzero(np.diff(smooth_diff_sign)))
 	changes.insert(0, 0)
 	changes.append(len(dx))
-	return (slice(changes[i], changes[i+1]) for i in range(0, len(changes)-1, 2))
+	return (slice(changes[i], changes[i+1]) for i in range(0, len(changes)-1)
+		if changes[i+1]-changes[i] > 2)
 
 def project_to_linestring(cart, shape_string):
 	# Shapely's type mangling is dog slow, so let's
@@ -72,7 +68,8 @@ def project_to_linestring(cart, shape_string):
 		y = yd.value
 		yield dist, x, y
 
-def map_departure_to_route(ts, cart, shape_string, new_dt=1.0):
+def map_departure_to_route(ts, cart, shape_string, new_dt=1.0,
+		raw_data_callback=None):
 	min_werr = 0.1
 	
 	route_mapping = np.array(list(project_to_linestring(cart, shape_string)))
@@ -83,30 +80,29 @@ def map_departure_to_route(ts, cart, shape_string, new_dt=1.0):
 	invalid = out_of_route(err)
 	valid_blocks = find_valid_blocks(invalid)
 	blocks = []
-	for block in valid_blocks:
-		werr = err[block].copy()
-		werr[werr < min_werr] = min_werr
-		w = np.sqrt(100*1.0/werr)
-		n = block.stop - block.start
-		# TODO: Doing the blocking without interpolating would
-		#	be a lot faster
-		# TODO: Use better smoothing, eg L1 splines. This tends
-		#	to cause oscillations
-		try:
-			splinefit = scipy.interpolate.UnivariateSpline(
-				ts[block], route_distance[block], w=w, s=(n-np.sqrt(2*n)))
-		except:
-			print >>sys.stderr, "Spline fitting failed, skipping block"
-			continue
 
-		#plt.plot(ts[block], route_distance[block])
-		#plt.plot(ts[block][1:], np.diff(route_distance[block])/np.diff(ts[block]))
-		#plt.plot(ts[block], splinefit(ts[block], 1))
-		#plt.show()
+	for block in valid_blocks:
+		#werr = err[block].copy()
+		#werr[werr < min_werr] = min_werr
+		#w = np.sqrt(100*1.0/werr)
+		n = block.stop - block.start
+		if n < 3: continue
+		new_ts = np.arange(ts[block.start], ts[block.stop-1], new_dt)
 		
-		mono = find_approx_monotonic_blocks(splinefit(ts[block], 1))
-		mono = ((slice(m.start+block.start, m.stop+block.start), splinefit)
-			for m in mono)
+		gridded_dist = scipy.interpolate.interp1d(ts[block], route_distance[block])
+		gridded_dist = gridded_dist(new_ts)
+		# TODO: Give out some kind of quality estimate using "interpolationess",
+		#	ie. distance from the interpolation points used for each gridded
+		#	measurement.
+		# TODO: Doing the blocking without the smoothing would
+		#	be a lot faster
+		# TODO: See if a (non-binary) weighted formulation can be done for
+		#	the L1-L2 smoothing
+		smoothed_dist = smooth1d_grid_l1_l2(gridded_dist, smoothing=3.0,
+					crit=1e-3, max_iters=100)
+
+		mono = (find_approx_monotonic_blocks(np.diff(smoothed_dist)*new_dt))
+		mono = ((new_ts[m], smoothed_dist[m]) for m in mono)
 		blocks.extend(mono)
 	
 	if len(blocks) == 0:
@@ -114,13 +110,16 @@ def map_departure_to_route(ts, cart, shape_string, new_dt=1.0):
 
 	# Get block of which start time is closest to the
 	# departure time (assuming ts is relative to the departure time)
-	block = blocks[np.argmin([ts[b[0].start] for b in blocks])]
-	block, splinefit = block
 	
-	new_ts = np.arange(ts[block.start], ts[block.stop-1], new_dt)
-	fitted_route_distance = splinefit(new_ts)
-	fitted_route_distance = scipy.ndimage.gaussian_filter1d(fitted_route_distance, 3.0/new_dt)
-	route_speed = np.diff(fitted_route_distance)
+	new_ts, fitted_route_distance = blocks[np.argmin([b[0][0] for b in blocks])]
+	
+	if raw_data_callback is not None:	
+		raw_block = slice(*ts.searchsorted([new_ts[0], new_ts[-1]]))
+	
+		raw_data_callback(ts=ts[raw_block], cart=cart[raw_block],
+			route_distance=route_distance[raw_block])
+
+	route_speed = np.diff(fitted_route_distance)*new_dt
 	fitted_route_distance = fitted_route_distance[1:]
 	block = slice(block.start+1, block.stop)
 	if np.mean(route_speed) < 0:
@@ -130,7 +129,7 @@ def map_departure_to_route(ts, cart, shape_string, new_dt=1.0):
 	new_ts = new_ts[1:]
 	return new_ts, fitted_route_distance, route_speed
 
-def filter_shape_routes(db, shape):
+def filter_shape_routes(db, shape, raw_data_callback=lambda **kwargs: None):
 	conn = db.bind.raw_connection()
 	
 	dep_cursor = conn.cursor(cursor_factory=NamedTupleCursor)
@@ -170,7 +169,8 @@ def filter_shape_routes(db, shape):
 		ts, lat, lon = np.array(coordinates).T
 		cart = np.array(zip(*coord_proj(lon, lat)))
 		try:
-			yield departure, map_departure_to_route(ts, cart, shape_string)
+			yield departure, map_departure_to_route(ts, cart, shape_string,
+				raw_data_callback=raw_data_callback)
 		except RouteException:
 			continue
 
@@ -189,24 +189,26 @@ def insert_routed_trace(routed_tbl, departure_tbl, mapping):
 		where(departure_tbl.c.departure_id == departure.departure_id).\
 		values(routed_trace=result.inserted_primary_key[0]).execute()
 
+def _fetch_shapes(conn):
+	cur = conn.cursor()
+	cur.execute("""
+		select distinct shape
+		from transit_departure
+		where trace notnull
+		""")
+	
+	return [r[0] for r in cur]
+
 
 def filter_routes(uri=schema.default_uri, shape=None):
 	db = schema.connect(uri)
 	conn = db.bind.raw_connection()
 	
-	#shape = "1009_20120813_1"
-	
 	if shape is not None:
 		shapes = [shape]
 	else:
-		cur = conn.cursor()
-		cur.execute("""
-			select distinct shape
-			from transit_departure
-			where trace notnull
-			""")
-		shapes = [r[0] for r in cur]
-	
+		shapes = list(_fetch_shapes(conn))
+		
 	routed_tbl = db.tables['routed_trace']
 	departure_tbl = db.tables['transit_departure']
 	n_shapes = len(shapes)
@@ -216,53 +218,43 @@ def filter_routes(uri=schema.default_uri, shape=None):
 		for mapping in mappings:
 			insert_routed_trace(routed_tbl, departure_tbl, mapping)
 
+def plot_shape_route_filtering(db, shape):
+	import matplotlib.pyplot as plt
+	
+	# Hacking the lack of nonlocal
+	rawdata = {}
+	def rawdata_callback(**kwargs):
+		rawdata.update(**kwargs)
+
+	for departure, (ts, dist, speed) in filter_shape_routes(db, shape, raw_data_callback=rawdata_callback):
+		plt.plot(dist, speed, color='black', alpha=0.1)
+		#plt.subplot(2,1,2)
+		#rawspeed = np.diff(rawdata['route_distance'])/np.diff(rawdata['ts'])
+		#plt.plot(rawdata['ts'][1:], rawspeed*3.6, 'r', label='raw')
+		#plt.plot(ts, speed*3.6, 'b', label='smoothed')
+		#plt.subplot(2,1,1)
+		#plt.plot(rawdata['ts'], rawdata['route_distance'], 'r', label='raw')
+		#plt.plot(ts, dist, 'b', label='smoothed')
+	plt.show()
+
+def plot_route_filtering(uri=schema.default_uri, shape=None):
+	"""Used mainly for testing"""
+
+	db = schema.connect(uri)
+	conn = db.bind.raw_connection()
+	
+	if shape is not None:
+		shapes = [shape]
+	else:
+		shapes = list(_fetch_shapes(conn))
+	
+	for shape in shapes:
+		plot_shape_route_filtering(db, shape)
+
 
 if __name__ == '__main__':
 	import argh
         parser = argh.ArghParser()
-        parser.add_commands([filter_routes])
+        parser.add_commands([filter_routes, plot_route_filtering])
         parser.dispatch()
 
-
-"""
-	route_distance = map(shape_string.project, points)
-	on_string = map(shape_string.interpolate, route_distance)
-	err = np.array([on_string[i].distance(points[i]) for i in range(len(points))])
-
-	invalid = out_of_route(err)
-	#weights = 1.0/(err+1.0)
-
-	route_distance = np.array(route_distance)
-	ts = np.array(ts)
-
-	werr = err.copy()
-	werr[werr < 1] = 1
-	w = 1.0/werr
-	splinefit = scipy.interpolate.UnivariateSpline(ts, route_distance, w=w, s=len(ts))
-
-	#plt.plot(ts[~invalid], route_distance[~invalid], label='orig')
-	#plt.plot(ts[~invalid], filtdist[~invalid], label='filtered')
-	plt.subplot(2,1,1)
-	plt.plot(ts[1:], np.diff(route_distance), label='orig')
-	fitted = splinefit(ts)
-	fitted[invalid] = np.nan
-	plt.plot(ts, splinefit(ts, 1))
-	#plt.plot(ts[valid], lowpass, label='filtered')
-	#plt.subplot(2,1,2)
-	#plt.plot(ts, err)
-	plt.subplot(2,1,2)
-	plt.plot(shape_cart[0], shape_cart[1])
-	plt.plot(cart[:,0][~invalid], cart[:,1][~invalid], '.', color='black', alpha=0.3)
-	plt.plot(cart[:,0][invalid], cart[:,1][invalid], '.', color='red', alpha=0.3)
-	plt.legend()
-	plt.show()
-	
-	#plt.subplot(1,2,1)
-	#plt.plot(shape_cart[0], shape_cart[1], '-o')
-	#plt.plot(cart[:,0], cart[:,1], '.', color='black', alpha=0.1)
-	#plt.subplot(1,2,2)
-	#plt.plot(ts, dists, '.')
-	#plt.show()
-
-plt.show()
-"""

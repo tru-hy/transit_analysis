@@ -1,0 +1,3 @@
+[submodule "ext/obs_splines"]
+	path = ext/obs_splines
+	url = git@gitorious.org:tru/obs_splines.git
