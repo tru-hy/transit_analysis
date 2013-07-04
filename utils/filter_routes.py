@@ -159,7 +159,7 @@ def filter_shape_routes(db, shape, raw_data_callback=lambda **kwargs: None):
 				source=%s AND
 				time between %s and %s
 			order by ts
-			""", (departure.start_time,
+			""", (departure.departure_time,
 				departure.source,
 				departure.start_time,
 				departure.end_time))
