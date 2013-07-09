@@ -65,10 +65,7 @@ def main(url, app_id):
 	
 	poller = NicerPollwait()
 	
-	prev_time = time.time()
 	while True:
-		now = time.time()
-		prev_time = now
 		try:
 			result = urllib2.urlopen(request)
 			fileredirect(result, sys.stdout)
