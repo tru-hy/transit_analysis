@@ -227,7 +227,8 @@ def plot_shape_route_filtering(db, shape):
 		rawdata.update(**kwargs)
 
 	for departure, (ts, dist, speed) in filter_shape_routes(db, shape, raw_data_callback=rawdata_callback):
-		plt.plot(dist, speed, color='black', alpha=0.1)
+		#plt.plot(dist, speed, color='black', alpha=0.1)
+		plt.plot(ts, dist, color='black', alpha=0.1)
 		#plt.subplot(2,1,2)
 		#rawspeed = np.diff(rawdata['route_distance'])/np.diff(rawdata['ts'])
 		#plt.plot(rawdata['ts'][1:], rawspeed*3.6, 'r', label='raw')

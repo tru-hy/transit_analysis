@@ -37,6 +37,7 @@ def _parse_date(date):
 	return datetime.datetime(int(date[:4]), int(date[4:6]), int(date[6:8]))
 
 def gtfs_departures(path):
+	# TODO! Fix timezoning! (Seems to imply GMT at the moment)
 	weekday_fields = dict(
 		monday=rrule.MO,
 		tuesday=rrule.TU,
@@ -57,7 +58,7 @@ def gtfs_departures(path):
 		for field,daytype in weekday_fields.iteritems():
 			if int(getattr(row, field)):
 				days.append(daytype)
-
+		
 		dates = list(rrule.rrule(rrule.DAILY, dtstart=start_date, until=end_date,
 				byweekday=days))
 		
@@ -106,6 +107,7 @@ def gtfs_departures(path):
 		time = get_departure_time(row.trip_id)
 		h, m, s = map(int, time.split(':'))
 		# TODO, FIXME! Breaks on DST-change-days!
+		# TODO, FIXME! Timezone!
 		time = datetime.timedelta(hours=h, minutes=m, seconds=s)
 		for datestr in dates:
 			date = datetime.datetime.strptime(datestr, "%Y%m%d")
