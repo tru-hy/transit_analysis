@@ -48,7 +48,7 @@ departure = Table("transit_departure", metadata,
 	#	could be in another table
 	Column('route_name', String(255)),
 	Column('route_variant', String(255)),
-	Column('direction', Integer),
+	Column('direction', String(255)),
 	Column('departure_time', DateTime),
 	Column('shape', String(255)),
 	Index('departure_shape_idx', 'shape'),
