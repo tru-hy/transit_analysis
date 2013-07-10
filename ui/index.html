@@ -1,0 +1,76 @@
+<script type="text/javascript" src="static/js/jquery.js"></script>
+<script type="text/javascript" src="static/js/underscore.js"></script>
+<script type="text/javascript" src="static/js/coffee-script.js"></script>
+
+<script type="text/javascript" src="static/js/jquery.event.drag-2.2.js"></script>
+<script type="text/javascript" src="static/js/jquery-ui.js"></script>
+<script src="static/js/slick.core.js"></script>
+<script src="static/js/slick.grid.js"></script>
+<script src="static/js/slick.dataview.js"></script>
+<script src="static/js/slick.groupitemmetadataprovider.js"></script>
+<script src="static/js/slick.rowselectionmodel.js"></script>
+<link rel="stylesheet" href="static/css/jquery-ui.css" type="text/css"/>
+<link rel="stylesheet" href="static/css/slick.grid.css" type="text/css"/>
+<link rel="stylesheet" href="static/css/slick.columnpicker.css" type="text/css"/>
+<link rel="stylesheet" href="static/css/slick-default-theme.css" type="text/css"/>
+
+<link rel="stylesheet" href="static/css/transit_analysis.css" type="text/css"/>
+
+<script type="text/coffeescript">
+route_link_template = _.template """
+<a href="<%= url %>" class="view-route-link">View</a>
+"""
+
+$ ->
+	grid = null
+	dataView = null
+	$.getJSON 'resources/transit_routes.json', (data) ->
+		columns = ({id: n, field: n, name: n} \
+			for n of data[0] when n not in ['id'])
+		
+		depcol = $.grep(columns, (e) -> e.id == 'departures')[0]
+		depcol['groupTotalsFormatter'] = (total, coldef) ->
+			return total.sum.departures
+		
+		routecol = $.grep(columns, (e) -> e.id == 'route_name')[0]
+		routecol['formatter'] = (args...) ->
+			row = args[4]
+			urlargs = _.pick row, 'route_variant', 'direction', 'shape'
+			url = "route.html?"+$.param urlargs
+			return route_link_template url: url
+			
+
+		[columns[1], columns[0]] = [columns[0], columns[1]]
+		
+		groupItemMetadataProvider = new Slick.Data.GroupItemMetadataProvider()
+		dataView = new Slick.Data.DataView
+			groupItemMetadataProvider: groupItemMetadataProvider
+			inlineFilters: true
+
+		dataView.setGrouping(
+			getter: 'route_name'
+			formatter: (g) -> g.value
+			#aggregators: [
+			#	new Slick.Data.Aggregators.Sum("departures")
+			#	]
+			aggregateCollapsed: true
+			collapsed: true)
+		dataView.setItems(data)
+		grid = new Slick.Grid "#departure_grid", dataView, columns,
+			forceFitColumns: true
+			multiSelect: false
+
+		grid.registerPlugin groupItemMetadataProvider
+		grid.setSelectionModel new Slick.RowSelectionModel()
+
+		dataView.onRowCountChanged.subscribe (e, args) ->
+			grid.updateRowCount()
+			grid.render()
+		
+		dataView.onRowsChanged.subscribe (e, args) ->
+			grid.invalidateRows(args.rows)
+			grid.render()
+
+</script>
+
+<div id="departure_grid" style="width: 640; height: 480"></div>

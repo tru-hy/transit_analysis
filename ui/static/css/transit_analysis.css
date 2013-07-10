@@ -1,0 +1,8 @@
+.slick-row a.view-route-link {
+	display: none;
+}
+
+.slick-row:hover a.view-route-link {
+	display: block;
+	width: 100%;
+}
