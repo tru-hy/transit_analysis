@@ -63,7 +63,7 @@ def to_csv(adapter, trace_output="", timezone=""):
 	for act in iterate_activities(sys.stdin):
 		departure, measurement = handler(act)
 		traces(departure, measurement)
-		print ",".join(map(csvmapper, handler(act)[1]))
+		print "\t".join(map(csvmapper, handler(act)[1]))
 	traces.finalize()
 
 if __name__ == '__main__':
