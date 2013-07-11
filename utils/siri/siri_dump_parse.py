@@ -33,7 +33,7 @@ def iterate_activities(infile):
 		for act in root.iter("VehicleActivity"):
 			yield act
 
-def to_csv(adapter, trace_output="", timezone=""):
+def to_csv(adapter, trace_output="", timezone="", dump_departure=False):
 	import imp
 	adapter = imp.load_source("adapter", adapter)
 	
@@ -63,7 +63,12 @@ def to_csv(adapter, trace_output="", timezone=""):
 	for act in iterate_activities(sys.stdin):
 		departure, measurement = handler(act)
 		traces(departure, measurement)
-		print "\t".join(map(csvmapper, handler(act)[1]))
+		sys.stdout.write("\t".join(map(csvmapper, handler(act)[1])))
+		if dump_departure:
+			sys.stdout.write("\t")
+			sys.stdout.write(departure)
+		sys.stdout.write('\n')
+		sys.stdout.flush()
 	traces.finalize()
 
 if __name__ == '__main__':
