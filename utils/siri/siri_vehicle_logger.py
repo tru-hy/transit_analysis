@@ -63,11 +63,13 @@ def main(url, app_id):
 	request.add_data(query)
 	
 	poller = NicerPollwait()
+	output = sys.stdout
 	
 	while True:
 		try:
 			result = urllib2.urlopen(request)
-			fileredirect(result, sys.stdout)
+			fileredirect(result, output)
+			output.write('\n')
 			pass
 		except Exception, e:
 			print >>sys.stderr, "Polling failed:", e
