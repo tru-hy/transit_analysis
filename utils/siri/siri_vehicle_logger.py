@@ -23,7 +23,6 @@ def get_request(url):
 	parsed = list(parsed)
 	parsed[1] = netloc
 	url = urlparse.urlunparse(parsed)
-	print url
 	req = urllib2.Request(url)
 	if credentials:
 		req.add_header('Authorization', "Basic %s"%credentials)
