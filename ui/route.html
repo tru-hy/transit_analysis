@@ -3,7 +3,44 @@
 <script type="text/javascript" src="static/js/underscore.js"></script>
 <script type="text/javascript" src="static/js/coffee-script.js"></script>
 
+<script type="text/coffeescript" src="static/js/trusas.core.coffee"></script>
+<script type="text/coffeescript" src="static/js/trusas.plugins.coffee"></script>
+
+<script type="text/javascript" src="static/js/flotr2.min.js"></script>
+
+<link rel="stylesheet" href="static/css/transit_analysis.css" type="text/css"/>
+
 <script type="text/coffeescript">
+$ ->
+	#param = $.deparam window.location.search[1..]
+	cursor = new TrusasCursor()
+
+	query = "resources/departure_traces.json"+window.location.search
+	data_promise = $.getJSON query
+
+	data_promise.done (data) ->
+		min_dist = _.min (d.route_distance[0] for d in data)
+		max_dist = _.max (d.route_distance[d.route_distance.length-1])
+		cursor.accommodateAxisRange min_dist, max_dist
+	
+	data_promise.done (data) ->
+		arrays = (_.zip(d.route_distance, d.route_speed) for d in data)
+		graph = Flotr.draw $("#route-speed")[0], arrays,
+			colors: ["rgba(0,0,0,0.1)"]
+			shadowSize: 0
+			yaxis:
+				title: "Speed (km/h)"
+			xaxis:
+				title: "Distance (m)"
+			HtmlText: false
+	
+	#data_promise.fail (promise, reason, message) ->
+	#	console.log promise, reason, message
+
+	#data_promise.done (data) ->
+	#	console.log "DONE", data
+
 </script>
 
 <div id="route-map"></div>
+<div id="route-speed" style="width: 49%; height: 200px; border: 1px solid black;"></div>

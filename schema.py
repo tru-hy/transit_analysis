@@ -2,26 +2,17 @@ from sqlalchemy import *
 from sqlalchemy.dialects.postgresql import HSTORE, ARRAY
 
 
-TraceIdType = Integer
-TraceReference = lambda name='trace', **kwargs: Column(name, TraceIdType,
-		ForeignKey("coordinate_trace.id"),
-		nullable=True, **kwargs)
-
 metadata = MetaData()
 
-# TODO: We'd probably get a huge performance increase
-#	by caching the records here as arrays or doing
-#	a materialized view
 trace = Table("coordinate_trace", metadata,
-	Column('id', TraceIdType, Sequence("coordinate_trace_id_seq"),
-		primary_key=True),
+	Column('id', String(255), primary_key=True),
 	Column('source', String(255)),
 	Column('start_time', DateTime),
 	Column('end_time', DateTime)
 	)
 
 routed_trace = Table("routed_trace", metadata,
-	Column('id', TraceIdType, Sequence("routed_trace_id_seq"),
+	Column('id', Integer, Sequence("routed_trace_id_seq"),
 		primary_key=True),
 	Column('reference_time', DateTime),
 	Column('shape', String(255)),
@@ -31,7 +22,6 @@ routed_trace = Table("routed_trace", metadata,
 	)
 
 measurement = Table("coordinate_measurement", metadata,
-	# TODO: Change to some kind of (automated) surrogate key
 	Column('source', String(255), index=True),
 	Column('time', DateTime, index=True),
 	Index('source_time_idx', 'source', 'time'),
@@ -52,9 +42,9 @@ departure = Table("transit_departure", metadata,
 	Column('departure_time', DateTime),
 	Column('shape', String(255)),
 	Index('departure_shape_idx', 'shape'),
-	TraceReference(),
+	Column('trace', String(255)),
 	Column('routed_trace', Integer,
-		ForeignKey("coordinate_trace.id"),
+		ForeignKey("routed_trace.id"),
 		nullable=True),
 	Column('attributes', HSTORE)
 	)

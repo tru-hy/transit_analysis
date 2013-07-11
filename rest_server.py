@@ -2,14 +2,14 @@ from StringIO import StringIO
 import os
 from collections import OrderedDict
 
-import simplejson
+import sqlalchemy as sqa
 
-from trusas_server import session_server, providers
+from trusas_server import session_server, providers, serialize
 import schema
 
 def resultoutput(result):
 	output = StringIO()
-	simplejson.dump(
+	serialize.dump(
 		[OrderedDict(row.items()) for row in result],
 		output)
 	output.seek(0)
@@ -79,7 +79,28 @@ def coordinate_shape(db, shape):
 	row = result.fetchone()
 	if not row: return None
 	row = OrderedDict(row.items())
-	return StringIO(simplejson.dumps(row))
+	return StringIO(serialize.dumps(row))
+
+def nocols(tbl, *exclude):
+	return [tbl.c[n] for (n) in tbl.c.keys() if n not in exclude]
+
+@db_provider()
+def departure_traces(db, shape, route_variant=None, direction=None):
+	dep = db.tables['transit_departure']
+	tr = db.tables['routed_trace']
+	
+	cols = [dep] + nocols(tr, 'id', 'shape')
+	query = sqa.select(cols).\
+		where(dep.c.routed_trace==tr.c.id).\
+		where(dep.c.shape==shape)
+	
+	if route_variant is not None:
+		query = query.where(dep.c.route_variant==route_variant)
+	if direction is not None:
+		query = query.where(dep.c.direction==direction)
+	
+	result = db.bind.execute(query)
+	return resultoutput(result)
 
 def main(uri=schema.default_uri):
 	import cherrypy as cp
@@ -89,13 +110,19 @@ def main(uri=schema.default_uri):
 		transit_routes(db),
 		coordinate_shape(db),
 		coordinate_shapes(db),
+		departure_traces(db)
 		]
 	
 	resources = session_server.ResourceServer(providers)
 	my_static = os.path.join(os.path.dirname(__file__), 'ui')
 	root = session_server.StaticUnderlayServer(my_static)
 	root.resources = resources
-	cp.quickstart(root)
+
+	config = {
+		'tools.gzip.on': True,
+		'tools.gzip.mime_types': ['text/*', 'application/json']
+		}
+	cp.quickstart(root, config={'global': config})
 
 if __name__ == '__main__':
 	import argh
