@@ -25,6 +25,8 @@ transit_departure = defaultnamedtuple("transit_departure", (
 	('direction', None),
 	('departure_time', None),
 	('shape', None),
+	('trace', None),
+	('routed_trace', None),
 	('attributes', None)
 	))
 

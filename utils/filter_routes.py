@@ -208,7 +208,7 @@ def filter_routes(uri=schema.default_uri, shape=None):
 		shapes = [shape]
 	else:
 		shapes = list(_fetch_shapes(conn))
-		
+	
 	routed_tbl = db.tables['routed_trace']
 	departure_tbl = db.tables['transit_departure']
 	n_shapes = len(shapes)

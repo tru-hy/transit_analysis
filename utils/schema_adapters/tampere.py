@@ -1,11 +1,15 @@
 import sys
 import datetime
 import re
+from collections import OrderedDict
 
 import pytz
 import dateutil.parser
 
+
 from transit_analysis.recordtypes import *
+
+timezone = "Europe/Helsinki"
 
 def get_departure_id(route, direction, departure_time_iso):
 	return "%s/%s/%s"%(route, direction, departure_time_iso)
@@ -44,16 +48,19 @@ def fastisots(t):
 	return ts
 
 class SiriDepartureMeasurement:
-	def __init__(self, timezone="Europe/Helsinki", **kwargs):
+	def __init__(self, timezone=timezone, **kwargs):
 		self.timezone = pytz.timezone(timezone)
 		self.timecache = {}
+		self.largetimecache = OrderedDict()
 		self.dateutilutc = dateutil.tz.tzutc()
 	
 	def __call__(self, act):
 		def getfield(name):
-			return act.iter(name).next().text
+			return act.get(name)
 		route = getfield("LineRef")
-		direction = str(int(getfield("DirectionRef")) - 1)
+		direction = getfield("DestinationName")
+		if direction is None:
+			raise ValueError("No origin stop")
 		date = getfield("DataFrameRef")
 		departure_time = getfield("DatedVehicleJourneyRef")
 		timestamp = getfield("RecordedAtTime")
@@ -62,7 +69,16 @@ class SiriDepartureMeasurement:
 		bearing = float(getfield("Bearing"))
 		source = getfield("VehicleRef").strip()
 		
-		timestamp = fastisots(timestamp).isoformat()
+		if timestamp not in self.largetimecache:
+			ts = fastisots(timestamp).isoformat()
+			self.largetimecache[timestamp] = ts
+			if len(self.largetimecache) > 20:
+				self.largetimecache.popitem(False)
+
+			timestamp = ts
+		else:
+			timestamp = self.largetimecache[timestamp]
+
 		timekey = (date, departure_time)
 		if timekey in self.timecache:
 			departure_time = self.timecache[timekey]
@@ -81,3 +97,25 @@ class SiriDepartureMeasurement:
 
 
 		return departure_id, measurement
+
+class GtfsDeparture:
+	def __init__(self, departures):
+		self.stop_times = departures.stop_times
+		self.stops = departures.stops
+
+	def __call__(self, dep):
+		dest_id = self.stop_times[dep.trip_id][-1].stop_id
+		dest_name = self.stops[dest_id].stop_name.strip()
+		dep_id = get_departure_id(
+			dep.route_id,
+			dest_name,
+			dep.departure_time.isoformat()
+			)
+		return transit_departure(
+			departure_id=dep_id,
+			route_name=dep.route_id,
+			route_variant=dep.route_id,
+			direction=dest_name,
+			shape=dep.shape_id,
+			departure_time=dep.departure_time)
+		#depid = get_departure_id(departure
