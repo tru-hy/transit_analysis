@@ -102,7 +102,7 @@ def to_csv(adapter, trace_output="", timezone="", dump_departure=False,
 	for act in iterate_activities(sys.stdin):
 		try:
 			departure, measurement = handler(act)
-		except ValueError:
+		except KeyError:
 			continue
 		traces(departure, measurement)
 		if no_measurements: continue

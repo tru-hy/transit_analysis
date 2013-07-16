@@ -16,12 +16,18 @@ def csvmapper(field):
 class TraceTracker:
 	def __init__(self, on_departure):
 		self.ongoing = {}
-		self.seen = {}
-		self.on_departure = on_departure
+		self._reported = {}
+		self.cb = on_departure
+	
+	def _on_departure(self, src, *args):
+		dep = args[0]
+		if dep in self._reported:
+			print >>sys.stderr, "Duplicate trace for %s"%dep
+			return
+		self._reported[dep] = True
+		self.cb(src, *args)
 	
 	def __call__(self, departure, measurement):
-		if departure in self.seen:
-			return
 		src = measurement.source
 		if not src:
 			return
@@ -31,8 +37,7 @@ class TraceTracker:
 			return
 		record = self.ongoing[src]
 		if record[0] != departure:
-			self.seen[record[0]] = True
-			self.on_departure(src, *record)
+			self._on_departure(src, *record)
 			self.ongoing[src] = [departure, measurement.time,
 						measurement.time]
 			return
@@ -42,4 +47,5 @@ class TraceTracker:
 
 	def finalize(self):
 		for src, record in self.ongoing.iteritems():
-			self.on_departure(src, *record)
+			self._on_departure(src, *record)
+

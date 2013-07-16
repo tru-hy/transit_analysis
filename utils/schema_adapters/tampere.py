@@ -50,24 +50,35 @@ def fastisots(t):
 class SiriDepartureMeasurement:
 	def __init__(self, timezone=timezone, **kwargs):
 		self.timezone = pytz.timezone(timezone)
-		self.timecache = {}
+		self.departure_cache = OrderedDict()
 		self.largetimecache = OrderedDict()
 		self.dateutilutc = dateutil.tz.tzutc()
 	
-	def __call__(self, act):
-		def getfield(name):
-			return act.get(name)
-		route = getfield("LineRef")
-		direction = getfield("DestinationName")
-		if direction is None:
-			raise ValueError("No origin stop")
-		date = getfield("DataFrameRef")
-		departure_time = getfield("DatedVehicleJourneyRef")
-		timestamp = getfield("RecordedAtTime")
-		latitude = float(getfield("Latitude"))
-		longitude = float(getfield("Longitude"))
-		bearing = float(getfield("Bearing"))
-		source = getfield("VehicleRef").strip()
+	def departure(self, act):
+		route = act["LineRef"]
+		direction = act["DestinationName"]
+		date = act["DataFrameRef"]
+		departure_time = act["DatedVehicleJourneyRef"]
+		
+		key = (route, direction, departure_time)
+		if key in self.departure_cache:
+			return self.departure_cache[key]
+
+		departure_time = _get_utc_iso(date, departure_time, self.timezone)
+		
+		dep_id = get_departure_id(route, direction, departure_time)
+		self.departure_cache[key] = dep_id
+		if len(self.departure_cache) > 100:
+			self.departure_cache.popitem(False)
+		return dep_id
+		
+	
+	def measurement(self, act):
+		timestamp = act["RecordedAtTime"]
+		latitude = float(act["Latitude"])
+		longitude = float(act["Longitude"])
+		bearing = float(act["Bearing"])
+		source = act["VehicleRef"].strip()
 		
 		if timestamp not in self.largetimecache:
 			ts = fastisots(timestamp).isoformat()
@@ -79,14 +90,7 @@ class SiriDepartureMeasurement:
 		else:
 			timestamp = self.largetimecache[timestamp]
 
-		timekey = (date, departure_time)
-		if timekey in self.timecache:
-			departure_time = self.timecache[timekey]
-		else:
-			departure_time = _get_utc_iso(date, departure_time, self.timezone)
-			self.timecache[timekey] = departure_time
-
-		departure_id = get_departure_id(route, direction, departure_time)
+		
 
 		measurement = coordinate_measurement(
 			source=source,
@@ -95,6 +99,11 @@ class SiriDepartureMeasurement:
 			longitude=longitude,
 			bearing=bearing)
 
+		return measurement
+	
+	def __call__(self, act):
+		departure_id = self.departure(act)
+		measurement = self.measurement(act)
 
 		return departure_id, measurement
 
