@@ -22,8 +22,10 @@ def shapes_csv(gtfs_dir):
 		# Could use a heap if this causes
 		# performance problems (probably wont)
 		coords.sort()
-		latlon = zip(*zip(*coords)[1:])
-		projected = np.array(map(lambda p: proj(*p), latlon))
+		lat, lon = zip(*coords)[1:]
+		latlon = zip(lat, lon)
+
+		projected = np.array(proj(lon, lat)).T
 		diffs = np.sqrt(np.sum(np.diff(projected, axis=0)**2, axis=1))
 		distances = [0.0] + list(np.cumsum(diffs))
 		print "\t".join(map(csvmapper, (shape_id, latlon, distances)))
