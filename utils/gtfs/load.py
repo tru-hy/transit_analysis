@@ -5,6 +5,9 @@ from transit_analysis.recordtypes import transit_departure
 from transit_analysis.utils.dumping import csvmapper
 
 def shapes_csv(gtfs_dir):
+	import numpy as np
+	import pyproj
+	proj = pyproj.Proj(init="EPSG:3857")
 	filepath = os.path.join(gtfs_dir, 'shapes.txt')
 	shapes = {}
 	for row in NamedTupleCsvReader(bomopen(filepath)):
@@ -20,7 +23,10 @@ def shapes_csv(gtfs_dir):
 		# performance problems (probably wont)
 		coords.sort()
 		latlon = zip(*zip(*coords)[1:])
-		print "\t".join(map(csvmapper, (shape_id, latlon)))
+		projected = np.array(map(lambda p: proj(*p), latlon))
+		diffs = np.sqrt(np.sum(np.diff(projected, axis=0)**2, axis=1))
+		distances = [0.0] + list(np.cumsum(diffs))
+		print "\t".join(map(csvmapper, (shape_id, latlon, distances)))
 
 
 

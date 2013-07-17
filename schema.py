@@ -51,7 +51,8 @@ departure = Table("transit_departure", metadata,
 
 shape = Table("coordinate_shape", metadata,
 	Column('shape', String(255), primary_key=True),
-	Column('coordinates', ARRAY(Float, dimensions=2))
+	Column('coordinates', ARRAY(Float, dimensions=2)),
+	Column('distances', ARRAY(Float))
 	)
 
 default_uri="postgres://transit:transit@/transit"
