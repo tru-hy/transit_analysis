@@ -72,7 +72,7 @@ def coordinate_shapes(db, **kwargs):
 @db_provider()
 def coordinate_shape(db, shape):
 	result = db.bind.execute("""
-		select coordinates from coordinate_shape
+		select * from coordinate_shape
 		where shape=%s
 		""", shape)
 	

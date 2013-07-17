@@ -1,38 +1,144 @@
 <script type="text/javascript" src="static/js/jquery.js"></script>
 <script type="text/javascript" src="static/js/jquery-deparam.js"></script>
-<script type="text/javascript" src="static/js/underscore.js"></script>
 <script type="text/javascript" src="static/js/coffee-script.js"></script>
 
 <script type="text/coffeescript" src="static/js/trusas.core.coffee"></script>
-<script type="text/coffeescript" src="static/js/trusas.plugins.coffee"></script>
 
-<script type="text/javascript" src="static/js/flotr2.min.js"></script>
+<script type="text/javascript" src="static/js/Cesium/Cesium.js"></script>
+<link rel="stylesheet" href="static/css/transit_analysis.css" type="text/css" src="static/js/Cesium/Widgets/CesiumWidget/CesiumWidget.css" />
+
+<script type="text/coffeescript" src="static/js/trusas.map.coffee"></script>
+
+<script type="text/javascript" src="/static/js/jquery.flot.js"></script>
+<script type="text/javascript" src="/static/js/jquery.flot.crosshair.js"></script>
+<script type="text/javascript" src="/static/js/jquery.flot.navigate.js"></script>
+
+<!--<script type="text/javascript" src="static/js/envision.min.js"></script>
+<link rel="stylesheet" href="static/css/envision.min.css" type="text/css"/> -->
+
+<script type="text/javascript" src="static/js/underscore.js"></script>
 
 <link rel="stylesheet" href="static/css/transit_analysis.css" type="text/css"/>
 
 <script type="text/coffeescript">
 $ ->
-	#param = $.deparam window.location.search[1..]
 	cursor = new TrusasCursor()
-
-	query = "resources/departure_traces.json"+window.location.search
-	data_promise = $.getJSON query
-
-	data_promise.done (data) ->
-		min_dist = _.min (d.route_distance[0] for d in data)
-		max_dist = _.max (d.route_distance[d.route_distance.length-1])
-		cursor.accommodateAxisRange min_dist, max_dist
+	cursorpath = -> []
 	
-	data_promise.done (data) ->
-		arrays = (_.zip(d.route_distance, d.route_speed) for d in data)
-		graph = Flotr.draw $("#route-speed")[0], arrays,
-			colors: ["rgba(0,0,0,0.1)"]
-			shadowSize: 0
+	route_map = new Trusas.Map $("#route-map")[0]
+
+	query = $.deparam(window.location.search[1..])
+	shape_promise = $.getJSON \
+		"resources/coordinate_shape.json?"+$.param(_.pick(query, 'shape'))
+	
+	shape_promise.done (data) ->
+		route_map.add_route "default", data.coordinates
+		
+		[lats, lons] = _.zip(data.coordinates...)
+		pos_to_coords = Trusas.coord_interp data.distances, lats, lons
+		cursorpath = Trusas.rangepath data.distances, lats, lons
+		
+		$(cursor).on "activeRangeChange", (e, rng) ->
+			subpath = cursorpath rng...
+			extent = Trusas.coords_extent subpath
+			route_map.set_extent extent
+
+		$(cursor).on "hoverPositionChange", (e, pos) ->
+			coords = pos_to_coords pos
+			if not coords[0]?
+				coords = undefined
+			route_map.set_hover coords
+			console.log coords
+
+		cursor.accommodateAxisRange _.min(data.distances), _.max(data.distances)
+	
+	traces_query = "resources/departure_traces.json"+window.location.search
+	traces_promise = $.getJSON traces_query
+	
+	###
+	traces_promise.done (data) ->
+		series = []
+		for d in data
+			s =
+				data: [d.route_distance, d.route_speed]
+				color: "rgba(0,0,0,0.1)"
+
+			series.push s
+		
+		opts =
+			container: $("#route-speed")[0],
+			data:
+				detail: series,
+				summary: series
+			defaults:
+				detail: config:
+					yaxis: showLabels: true
+				summary: config:
+					xaxis: showLabels: true
+
+
+		series = new envision.templates.TimeSeries opts
+		return
+
+		vis = new envision.Visualization()
+		graph = new envision.Component
+			name: "speeds"
+			config:
+				'lite-lines':
+					lineWidth: 1
+					show: true
+				selection:
+					mode: "x"
+				xaxis: showLabels: true
+			data: series
+			height: "100%"
+		
+		vis
+			.add(graph)
+			.render $("#route-speed")[0]
+
+		interact = new envision.Interaction()
+		interact
+			.group([graph])
+			.add(envision.actions.zoom, {})
+		
+
+	###
+	traces_promise.done (data) ->
+		drives = []
+		for d in data
+			drive = {}
+			drive.data = _.zip(d.route_distance, d.route_speed)
+			drive.color = "rgba(0,0,0,0.1)"
+			drive.shadowSize = 0
+			drives.push drive
+		
+		el = $("#route-speed")
+		plot = $.plot el, drives,
+			zoom: interactive: true
+			pan: interactive: true
 			yaxis:
-				title: "Speed (km/h)"
+				panRange: false
+				zoomRange: false
 			xaxis:
-				title: "Distance (m)"
-			HtmlText: false
+				panRange: cursor.getAxisRange()
+				zoomRange: cursor.getAxisRange()
+			grid: hoverable: true
+			crosshair: mode: 'x'
+
+		update_cursor = ->
+			axes = plot.getAxes()
+			start = axes.xaxis.min
+			end = axes.xaxis.max
+			cursor.setActiveRange([start, end])
+		
+		$(el).bind "plotzoom", update_cursor
+		$(el).bind "plotpan", update_cursor
+
+		$(el).bind "plothover", (event, pos, item) ->
+			cursor.setHoverPosition pos.x
+			#coords = route.dist_to_coords(pos.x)
+
 	
 	#data_promise.fail (promise, reason, message) ->
 	#	console.log promise, reason, message
@@ -42,5 +148,5 @@ $ ->
 
 </script>
 
-<div id="route-map"></div>
-<div id="route-speed" style="width: 49%; height: 200px; border: 1px solid black;"></div>
+<div id="route-map" style="width: 500px; height: 500px; float: left;"></div>
+<div id="route-speed" style="width: 49%; height: 500px; float: left;"></div>
