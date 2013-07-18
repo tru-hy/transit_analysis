@@ -1,5 +1,6 @@
 import sys
 import os
+from transit_analysis.config import coordinate_projection
 from transit_analysis.utils.gtfs import *
 from transit_analysis.recordtypes import transit_departure
 from transit_analysis.utils.dumping import csvmapper
@@ -7,7 +8,7 @@ from transit_analysis.utils.dumping import csvmapper
 def shapes_csv(gtfs_dir):
 	import numpy as np
 	import pyproj
-	proj = pyproj.Proj(init="EPSG:3857")
+	proj = pyproj.Proj(init=coordinate_projection)
 	filepath = os.path.join(gtfs_dir, 'shapes.txt')
 	shapes = {}
 	for row in NamedTupleCsvReader(bomopen(filepath)):

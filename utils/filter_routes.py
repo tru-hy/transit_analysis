@@ -11,11 +11,11 @@ import scipy.interpolate
 import scipy.signal
 import scipy.ndimage
 
-from transit_analysis import schema
+from transit_analysis import schema, config
 from transit_analysis.ext.obs_splines import \
 	smooth1d_grid_l1_l2_missing, smooth1d_grid_l1_l2
 
-coord_proj = pyproj.Proj(init="EPSG:3857")
+coord_proj = pyproj.Proj(init=config.coordinate_projection)
 
 class RouteException(Exception): pass
 
@@ -45,6 +45,44 @@ def find_approx_monotonic_blocks(dx):
 	return (slice(changes[i], changes[i+1]) for i in range(0, len(changes)-1)
 		if changes[i+1]-changes[i] > 2)
 
+def find_approx_increasing_blocks(dx):
+	smooth_diff = scipy.ndimage.gaussian_filter1d(dx, 101)
+
+	valid = smooth_diff >= 0
+	
+	i = 0
+	n = len(smooth_diff)
+	blocks = []
+	while True:
+		for i in range(i, n):
+			if valid[i]:
+				blockstart = i
+				break
+		else:
+			break
+
+		for i in range(i, n):
+			if not valid[i]:
+				block = slice(blockstart, i)
+				blocks.append(block)
+				break
+		else:
+			blocks.append(slice(blockstart, None))
+			break
+	return blocks
+
+def monotonize(x, y):
+	# TODO: Do this more elegantly/robustly. And less slowly.
+	# In optimal case in the fitting itself
+	y = y.copy()
+	
+	while True:
+		regressing = np.flatnonzero(np.ediff1d(y, to_begin=[0]) < 0)
+		if len(regressing) == 0: break
+		y[regressing] = y[regressing - 1]
+	return x, y
+
+
 def project_to_linestring(cart, shape_string):
 	# Shapely's type mangling is dog slow, so let's
 	# use the lowlevel api by hand
@@ -69,9 +107,11 @@ def project_to_linestring(cart, shape_string):
 		yield dist, x, y
 
 def map_departure_to_route(ts, cart, shape_string, new_dt=1.0,
+		new_dd=1.0,
 		raw_data_callback=None):
 	min_werr = 0.1
 	
+	maxlength = int(shape_string.length) + 1
 	route_mapping = np.array(list(project_to_linestring(cart, shape_string)))
 	route_distance = route_mapping[:,0]
 	on_string = route_mapping[:,1:]
@@ -101,7 +141,7 @@ def map_departure_to_route(ts, cart, shape_string, new_dt=1.0,
 		smoothed_dist = smooth1d_grid_l1_l2(gridded_dist, smoothing=3.0,
 					crit=1e-3, max_iters=100)
 
-		mono = (find_approx_monotonic_blocks(np.diff(smoothed_dist)*new_dt))
+		mono = (find_approx_increasing_blocks(np.diff(smoothed_dist)*new_dt))
 		mono = ((new_ts[m], smoothed_dist[m]) for m in mono)
 		blocks.extend(mono)
 	
@@ -112,14 +152,27 @@ def map_departure_to_route(ts, cart, shape_string, new_dt=1.0,
 	# departure time (assuming ts is relative to the departure time)
 	
 	new_ts, fitted_route_distance = blocks[np.argmin([b[0][0] for b in blocks])]
+	new_ts, fitted_route_distance = monotonize(new_ts, fitted_route_distance)
+	#dist_to_ts = scipy.interpolate.interp1d(fitted_route_distance, new_ts, bounds_error=False)
+	#fitted_route_distance = np.arange(0, maxlength, new_dd)
+	#new_ts = dist_to_ts(fitted_route_distance)
+	
+	"""
+	nanstart = 0
+	for nanstart in range(len(new_ts)):
+		if np.isfinite(new_ts[nanstart]): break
+	for nanend in range(len(new_ts)-1, 0, -1):
+		if np.isfinite(new_ts[nanend]): break
+	"""
 	
 	if raw_data_callback is not None:	
 		raw_block = slice(*ts.searchsorted([new_ts[0], new_ts[-1]]))
 	
 		raw_data_callback(ts=ts[raw_block], cart=cart[raw_block],
-			route_distance=route_distance[raw_block])
+			route_distance=route_distance[raw_block], raw_cart=cart,
+			shape_string=shape_string)
 
-	route_speed = np.diff(fitted_route_distance)*new_dt
+	route_speed = np.diff(fitted_route_distance)/(new_dt)
 	fitted_route_distance = fitted_route_distance[1:]
 	block = slice(block.start+1, block.stop)
 	if np.mean(route_speed) < 0:
@@ -128,6 +181,35 @@ def map_departure_to_route(ts, cart, shape_string, new_dt=1.0,
 
 	new_ts = new_ts[1:]
 	return new_ts, fitted_route_distance, route_speed
+
+def get_shape_departures(db, shape):
+	conn = db.bind.raw_connection()
+	dep_cursor = conn.cursor(cursor_factory=NamedTupleCursor)
+	dep_cursor.execute("""
+		select *
+		from transit_departure
+		left join coordinate_trace on trace=id
+		where shape=%s
+		""", (shape,))
+	
+	coord_cur = conn.cursor()
+	for departure in dep_cursor:
+		coord_cur.execute("""
+			select distinct extract(epoch from time-%s) as ts,
+				latitude, longitude
+			from coordinate_measurement
+			where
+				source=%s AND
+				time between %s and %s AND
+				latitude != 0 AND
+				longitude != 0
+			order by ts
+			""", (departure.departure_time,
+				departure.source,
+				departure.start_time,
+				departure.end_time))
+		yield departure, coord_cur.fetchall()
+
 
 def filter_shape_routes(db, shape, raw_data_callback=lambda **kwargs: None):
 	conn = db.bind.raw_connection()
@@ -142,13 +224,28 @@ def filter_shape_routes(db, shape, raw_data_callback=lambda **kwargs: None):
 
 	shapetbl = db.tables['coordinate_shape']
 	shape_data = shapetbl.select().where(shapetbl.c.shape==shape).execute()
-	shape_data = shape_data.fetchone()[1]
-
+	_, shape_data, shape_dist = shape_data.fetchone()
+	
+	
 	lat, lon = zip(*shape_data)
 	shape_cart = coord_proj(lon, lat)
 	shape_string = LineString(zip(*shape_cart))
-
+	
 	coord_cur = conn.cursor()
+	
+	for i, (departure, coordinates) in enumerate(get_shape_departures(db, shape)):
+		if len(coordinates) < 10: continue
+		ts, lat, lon = np.array(coordinates).T
+		cart = np.array(zip(*coord_proj(lon, lat)))
+		
+		try:
+			yield departure, map_departure_to_route(ts, cart, shape_string,
+				raw_data_callback=raw_data_callback)
+		except RouteException:
+			continue
+
+
+	return
 	
 	for i, departure in enumerate(dep_cursor):
 		coord_cur.execute("""
@@ -157,7 +254,9 @@ def filter_shape_routes(db, shape, raw_data_callback=lambda **kwargs: None):
 			from coordinate_measurement
 			where
 				source=%s AND
-				time between %s and %s
+				time between %s and %s AND
+				latitude != 0 AND
+				longitude != 0
 			order by ts
 			""", (departure.departure_time,
 				departure.source,
@@ -168,6 +267,7 @@ def filter_shape_routes(db, shape, raw_data_callback=lambda **kwargs: None):
 		if len(coordinates) < 10: continue
 		ts, lat, lon = np.array(coordinates).T
 		cart = np.array(zip(*coord_proj(lon, lat)))
+		
 		try:
 			yield departure, map_departure_to_route(ts, cart, shape_string,
 				raw_data_callback=raw_data_callback)
@@ -225,10 +325,28 @@ def plot_shape_route_filtering(db, shape):
 	rawdata = {}
 	def rawdata_callback(**kwargs):
 		rawdata.update(**kwargs)
-
+	shapeplot = None
 	for departure, (ts, dist, speed) in filter_shape_routes(db, shape, raw_data_callback=rawdata_callback):
+		#rawcart = rawdata['raw_cart']
+		#if not shapeplot:
+		#	shapeplot = True
+		#rawts = rawdata['ts']
+		#rawdist = rawdata['route_distance']
+		
+		#plt.plot(np.isfinite(ts))
+		#plt.plot(ts, dist, '.')
+		#plt.plot(dist, speed*3.6)
+		#plt.plot(x, y, '.')
+		plt.subplot(2,1,1)
+		#plt.plot(rawdata['shape_string'].xy[0], rawdata['shape_string'].xy[1])
+		#plt.plot(rawdata['cart'][:,0], rawdata['cart'][:,1])
+		plt.plot(rawdata['ts'], rawdata['route_distance'])
+		plt.plot(ts, dist)
+		plt.subplot(2,1,2)
+		plt.plot(ts, speed)
+		plt.show()
 		#plt.plot(dist, speed, color='black', alpha=0.1)
-		plt.plot(ts, dist, color='black', alpha=0.1)
+		#plt.plot(ts, dist, color='black', alpha=0.1)
 		#plt.subplot(2,1,2)
 		#rawspeed = np.diff(rawdata['route_distance'])/np.diff(rawdata['ts'])
 		#plt.plot(rawdata['ts'][1:], rawspeed*3.6, 'r', label='raw')
