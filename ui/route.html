@@ -103,7 +103,9 @@ class DataController
 		for d in data
 			d.time_at_distance = nulltonan d.time_at_distance_grid
 			d.time_spent = diff d.time_at_distance
+			d.speed = (1.0/v*dist_bin_width for v in d.time_spent)
 		
+		@distance_grid = @distance_grid[1..]
 		@time_spent_stats =
 			mean: []
 			std: []
@@ -239,17 +241,15 @@ $ ->
 		
 		dist_grid_len = data[0].time_at_distance_grid.length
 
-		dist_bin_width = data[0].distance_bin_width
-		dist_grid = (i*dist_bin_width for i in [0..dist_grid_len])
-		"""
+		###
 		for d in data
 			drive = {}
-			#drive.data = _.zip(d.route_distance, d.route_speed)
+			#drive.data = _.zip(ctrl.distance_grid, d.speed)
 			drive.data = _.zip(ctrl.distance_grid, d.time_spent)
 			drive.color = "rgba(0,0,0,0.1)"
 			drive.shadowSize = 0
 			drives.push drive
-		"""
+		###
 		
 		drives.push
 			data: _.zip(ctrl.distance_grid, ctrl.time_spent_stats.median)
@@ -328,6 +328,7 @@ $ ->
 			durations = []
 			for d in ctrl.data
 				t_at_d = d.time_at_distance_grid
+
 				duration = find_close_valid(t_at_d, end, 1) - find_close_valid(t_at_d, start, -1)
 				continue if duration != duration
 				continue if duration == 0
