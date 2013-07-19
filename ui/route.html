@@ -21,6 +21,25 @@
 <link rel="stylesheet" href="static/css/transit_analysis.css" type="text/css"/>
 
 <script type="text/coffeescript">
+
+discretize = (values, bins) ->
+		min = Math.min values...
+		max = Math.max values...
+		step = (max - min)/bins
+		# UGLY
+		binvals = []
+		hist = []
+		for i in [0..bins+1]
+			binval = i*step
+			binvals.push binval
+			hist.push 0
+		
+		for v in values
+			bin = Math.round((v-min)/step)
+			hist[bin] += 1
+		return [step, ([binvals[i],hist[i]] for i in [0..bins+1])]
+
+
 class DataController
 	constructor: ->
 		@cursor = new TrusasCursor()
@@ -33,29 +52,56 @@ class DataController
 		@traces_promise = $.getJSON traces_query
 			
 		@shape_promise.done @_setup_cursor
+		@traces_promise.done @_setup_data
 	
 	_setup_cursor: (data) =>
 		[lats, lons] = _.zip(data.coordinates...)
 		@cursor.accommodateAxisRange _.min(data.distances), _.max(data.distances)
 		@pos_to_coords = Trusas.coord_interp data.distances, lats, lons
 		@cursorpath = Trusas.rangepath data.distances, lats, lons
+	
+	_setup_data: (data) =>
+		@data = data
 
-		
+		dist_grid_len = data[0].time_at_distance_grid.length
+
+		dist_bin_width = data[0].distance_bin_width
+		@distance_bin_width = data[0].distance_bin_width
+		@distance_grid = (i*dist_bin_width for i in [0..dist_grid_len])
+
+		diff = (x) ->
+			(x[i] - x[i-1] for i in [1..x.length-1])
+
+		nulltonan = (x) ->
+			for i in [0..x.length]
+				if not x[i]?
+					x[i] = NaN
+			return x
+
+		for d in data
+			d.time_at_distance = nulltonan d.time_at_distance_grid
+			d.time_spent = diff d.time_at_distance
+	
+	distanceGridIndex: (dist) =>
+		return Math.round dist/@distance_bin_width
 
 $ ->
-	cursor = new TrusasCursor()
-	cursorpath = -> []
-	
 	ctrl = new DataController()
 
 	ctrl.shape_promise.done (data) ->
 		route_map = new Trusas.Map $("#route-map")[0]
 		route_map.add_route "default", data.coordinates
 
-		$(ctrl.cursor).on "activeRangeChange", (e, rng) ->
+		
+		extent_setup = (rng) ->
 			subpath = ctrl.cursorpath rng...
 			extent = Trusas.coords_extent subpath
 			route_map.set_extent extent
+		
+		$(ctrl.cursor).on "activeRangeChange", (e, rng) -> extent_setup rng
+		# TODO: For some reason this fails if done too early,
+		# so a hack.
+		setTimeout (-> extent_setup ctrl.cursor.getActiveRange()), 100
 
 		$(ctrl.cursor).on "hoverPositionChange", (e, pos) ->
 			coords = ctrl.pos_to_coords pos
@@ -113,18 +159,11 @@ $ ->
 		
 
 	###
-	ctrl.traces_promise.done (data) ->
+	ctrl.traces_promise.done ->
+		data = ctrl.data
 		drives = []
 		
-		diff = (x) ->
-			(x[i] - x[i-1] for i in [1..x.length-1])
-
-		nulltonan = (x) ->
-			for i in [0..x.length]
-				if not x[i]?
-					x[i] = NaN
-			return x
-
+		
 		dist_grid_len = data[0].time_at_distance_grid.length
 
 		dist_bin_width = data[0].distance_bin_width
@@ -132,8 +171,7 @@ $ ->
 		for d in data
 			drive = {}
 			#drive.data = _.zip(d.route_distance, d.route_speed)
-			t_at_d = nulltonan d.time_at_distance_grid
-			drive.data = _.zip(dist_grid[1..], diff t_at_d)
+			drive.data = _.zip(ctrl.distance_grid, d.time_spent)
 			drive.color = "rgba(0,0,0,0.1)"
 			drive.shadowSize = 0
 			drives.push drive
@@ -166,17 +204,29 @@ $ ->
 
 		$(el).bind "plothover", (event, pos, item) ->
 			ctrl.cursor.setHoverPosition pos.x
-		
-
-
 	
-	#data_promise.fail (promise, reason, message) ->
-	#	console.log promise, reason, message
-
-	#data_promise.done (data) ->
-	#	console.log "DONE", data
-
+	ctrl.traces_promise.done ->
+		plot_durations = ->
+			rng = ctrl.cursor.getActiveRange()
+			[start, end] = (ctrl.distanceGridIndex x for x in rng)
+			durations = []
+			for d in ctrl.data
+				t_at_d = d.time_at_distance_grid
+				duration = t_at_d[end] - t_at_d[start]
+				continue if duration != duration
+				durations.push duration
+			
+			[binsize, binned] = discretize(durations, 15)
+			$.plot $("#route-duration"), [{data: binned}],
+				bars:
+					show: true
+					barWidth: binsize
+		
+		$(ctrl.cursor).on "activeRangeChange", plot_durations
+		plot_durations ctrl
+			
 </script>
 
-<div id="route-map" style="width: 500px; height: 500px; float: left;"></div>
-<div id="route-speed" style="width: 49%; height: 500px; float: left;"></div>
+<div id="route-map" style="width: 600px; height: 600px; float: left;"></div>
+<div id="route-speed" style="width: 49%; height: 300px; float: left;"></div>
+<div id="route-duration" style="width: 49%; height: 300px; float: left;"></div>
