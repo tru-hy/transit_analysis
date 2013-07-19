@@ -108,6 +108,27 @@ class DataController
 	distanceGridIndex: (dist) =>
 		return Math.round dist/@distance_bin_width
 
+format_seconds = (seconds) ->
+	hours = Math.floor(seconds/(60*60))
+	seconds -= hours*60*60
+	minutes = Math.floor(seconds/60)
+	seconds -= minutes*60
+	seconds = Math.round(seconds)
+	if hours > 0
+		str = "#{hours}h"
+		if minutes > 0 and hours < 10
+			str += " #{minutes}m"
+		return str
+	if minutes > 0
+		str = "#{minutes}m"
+		if seconds == 0
+			return str
+		if seconds > 0 and minutes < 10
+			str += " #{seconds}s"
+		return str
+	return "#{seconds}s"
+	
+
 $ ->
 	ctrl = new DataController()
 
@@ -211,7 +232,7 @@ $ ->
 			color: "red"
 			shadowSize: 0
 
-		timeticks = [0, 1, 5, 10, 15, 30, 60, 120, 300, 600]
+		timeticks = [0, 1, 5, 10, 20, 30, 60, 120, 300, 600]
 		el = $("#route-speed")
 		plot = $.plot el, drives,
 			zoom: interactive: true
@@ -221,6 +242,7 @@ $ ->
 				zoomRange: false
 				min: 0.5
 				ticks: timeticks
+				tickFormatter: format_seconds
 				transform: (x) -> Math.log(x+1)
 			xaxis:
 				panRange: ctrl.cursor.getAxisRange()
@@ -258,10 +280,42 @@ $ ->
 					barWidth: binsize
 		
 		$(ctrl.cursor).on "activeRangeChange", plot_durations
-		plot_durations ctrl
+		plot_durations()
+	
+	ctrl.traces_promise.done ->
+		plot_dur_tod = ->
+			rng = ctrl.cursor.getActiveRange()
+			[start, end] = (ctrl.distanceGridIndex x for x in rng)
+			durations = []
+			for d in ctrl.data
+				t_at_d = d.time_at_distance_grid
+				duration = t_at_d[end] - t_at_d[start]
+				continue if duration != duration
+				date = new Date d.departure_time
+				minutes = date.getHours()*60 + date.getMinutes()
+				durations.push [minutes, duration]
+
+			$.plot $("#duration-by-tod"), [{data: durations}],
+				series:
+					points:
+						radius: 3
+						show: true
+				xaxis:
+					tickFormatter: (x) ->
+						hours = Math.floor(x/60)
+						minutes = String(x - hours*60)
+						if minutes.length < 2
+							minutes = "0" + minutes
+						"#{hours}:#{minutes}"
+				yaxis:
+					tickFormatter: format_seconds
+
+		$(ctrl.cursor).on "activeRangeChange", plot_dur_tod
+		plot_dur_tod()
 			
 </script>
 
 <div id="route-map" style="width: 600px; height: 600px; float: left;"></div>
-<div id="route-speed" style="width: 49%; height: 300px; float: left;"></div>
-<div id="route-duration" style="width: 49%; height: 300px; float: left;"></div>
+<div id="route-speed" style="width: 49%; height: 200px; float: left;"></div>
+<div id="route-duration" style="width: 49%; height: 200px; float: left;"></div>
+<div id="duration-by-tod" style="width: 49%; height: 200px; float: left;"></div>
