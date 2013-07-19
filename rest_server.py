@@ -7,10 +7,30 @@ import sqlalchemy as sqa
 from trusas_server import session_server, providers, serialize
 import schema
 
+def _to_nulls(lst):
+	# Hack to convert NaNs and Infs to JSON nulls
+	if not isinstance(lst, list):
+		return lst
+	for i in range(len(lst)):
+		if isinstance(lst[i], list):
+			_to_nulls(lst[i])
+			continue
+		if lst[i] != lst[i]:
+			lst[i] = None
+	return lst
+		
+
+def serialize_row(row):
+	output = OrderedDict()
+	for n, v in row.items():
+		output[n] = _to_nulls(v)
+	return output
+
 def resultoutput(result):
 	output = StringIO()
+
 	serialize.dump(
-		[OrderedDict(row.items()) for row in result],
+		[serialize_row(row) for row in result],
 		output)
 	output.seek(0)
 	return output
@@ -89,7 +109,9 @@ def departure_traces(db, shape, route_variant=None, direction=None):
 	dep = db.tables['transit_departure']
 	tr = db.tables['routed_trace']
 	
-	cols = [dep] + nocols(tr, 'id', 'shape')
+	
+	cols = [dep, tr.c.time_at_distance_grid, tr.c.distance_bin_width]
+	#+ nocols(tr, 'id', 'shape')
 	query = sqa.select(cols).\
 		where(dep.c.routed_trace==tr.c.id).\
 		where(dep.c.shape==shape)

@@ -47,3 +47,14 @@ coordinate_trace = defaultnamedtuple("coordinate_trace", (
 	'start_time',
 	'end_time'
 	))
+
+routed_trace = defaultnamedtuple("routed_trace", (
+	('id', None),
+	'reference_time',
+	'shape',
+	'timestamp',
+	'route_distance',
+	'route_speed',
+	'time_at_distance_grid',
+	'distance_bin_width'
+	))

@@ -11,7 +11,7 @@ import scipy.interpolate
 import scipy.signal
 import scipy.ndimage
 
-from transit_analysis import schema, config
+from transit_analysis import schema, config, recordtypes
 from transit_analysis.ext.obs_splines import \
 	smooth1d_grid_l1_l2_missing, smooth1d_grid_l1_l2
 
@@ -106,8 +106,8 @@ def project_to_linestring(cart, shape_string):
 		y = yd.value
 		yield dist, x, y
 
-def map_departure_to_route(ts, cart, shape_string, new_dt=1.0,
-		new_dd=1.0,
+def map_departure_to_route(ts, cart, shape_string, departure, new_dt=1.0,
+		new_dd=10.0,
 		raw_data_callback=None):
 	min_werr = 0.1
 	
@@ -126,14 +126,17 @@ def map_departure_to_route(ts, cart, shape_string, new_dt=1.0,
 		#werr[werr < min_werr] = min_werr
 		#w = np.sqrt(100*1.0/werr)
 		n = block.stop - block.start
-		if n < 3: continue
+		if n < 10: continue
 		new_ts = np.arange(ts[block.start], ts[block.stop-1], new_dt)
 		
-		gridded_dist = scipy.interpolate.interp1d(ts[block], route_distance[block])
-		gridded_dist = gridded_dist(new_ts)
 		# TODO: Give out some kind of quality estimate using "interpolationess",
 		#	ie. distance from the interpolation points used for each gridded
 		#	measurement.
+		#reference_points = scipy.interpolate.interp1d(ts[block], ts[block], kind='nearest')
+		#ref_dist = np.abs(reference_points(new_ts) - new_ts)
+
+		gridded_dist = scipy.interpolate.interp1d(ts[block], route_distance[block])
+		gridded_dist = gridded_dist(new_ts)
 		# TODO: Doing the blocking without the smoothing would
 		#	be a lot faster
 		# TODO: See if a (non-binary) weighted formulation can be done for
@@ -152,7 +155,7 @@ def map_departure_to_route(ts, cart, shape_string, new_dt=1.0,
 	# departure time (assuming ts is relative to the departure time)
 	
 	new_ts, fitted_route_distance = blocks[np.argmin([b[0][0] for b in blocks])]
-	new_ts, fitted_route_distance = monotonize(new_ts, fitted_route_distance)
+	#new_ts, fitted_route_distance = monotonize(new_ts, fitted_route_distance)
 	#dist_to_ts = scipy.interpolate.interp1d(fitted_route_distance, new_ts, bounds_error=False)
 	#fitted_route_distance = np.arange(0, maxlength, new_dd)
 	#new_ts = dist_to_ts(fitted_route_distance)
@@ -170,28 +173,47 @@ def map_departure_to_route(ts, cart, shape_string, new_dt=1.0,
 	
 		raw_data_callback(ts=ts[raw_block], cart=cart[raw_block],
 			route_distance=route_distance[raw_block], raw_cart=cart,
-			shape_string=shape_string)
+			shape_string=shape_string, err=err[raw_block])
 
 	route_speed = np.diff(fitted_route_distance)/(new_dt)
 	fitted_route_distance = fitted_route_distance[1:]
 	block = slice(block.start+1, block.stop)
-	if np.mean(route_speed) < 0:
-		# The route should be driven in the presented direction
-		raise RouteException("Wrong driving direction")
 
 	new_ts = new_ts[1:]
-	return new_ts, fitted_route_distance, route_speed
+	
+	mono_ts, mono_route_distance = monotonize(new_ts, fitted_route_distance)
+	dist_to_ts = scipy.interpolate.interp1d(fitted_route_distance, new_ts, bounds_error=False)
+	mono_route_distance = np.arange(0, maxlength, new_dd)
+	mono_ts = dist_to_ts(mono_route_distance)
+	time_spent = np.diff(mono_ts)
+	
+	record = recordtypes.routed_trace(
+		reference_time=departure.departure_time,
+		shape=departure.shape,
+		timestamp=new_ts,
+		route_distance=fitted_route_distance,
+		route_speed=route_speed,
+		time_at_distance_grid=mono_ts,
+		distance_bin_width=new_dd)
+		
+	return record
 
-def get_shape_departures(db, shape):
+def get_shape_departures(db, shape, override):
 	conn = db.bind.raw_connection()
 	dep_cursor = conn.cursor(cursor_factory=NamedTupleCursor)
-	dep_cursor.execute("""
+	
+	dep_cursor = conn.cursor(cursor_factory=NamedTupleCursor)
+	q = """
 		select *
 		from transit_departure
-		left join coordinate_trace on trace=id
+		right join coordinate_trace on trace=id
 		where shape=%s
-		""", (shape,))
+		"""
+	if not override:
+		q += "and routed_trace is null"
 	
+	dep_cursor.execute(q, (shape,))
+		
 	coord_cur = conn.cursor()
 	for departure in dep_cursor:
 		coord_cur.execute("""
@@ -211,17 +233,11 @@ def get_shape_departures(db, shape):
 		yield departure, coord_cur.fetchall()
 
 
-def filter_shape_routes(db, shape, raw_data_callback=lambda **kwargs: None):
+def filter_shape_routes(db, shape, override,
+		raw_data_callback=lambda **kwargs: None):
 	conn = db.bind.raw_connection()
 	
-	dep_cursor = conn.cursor(cursor_factory=NamedTupleCursor)
-	dep_cursor.execute("""
-		select *
-		from transit_departure
-		left join coordinate_trace on trace=id
-		where shape=%s
-		""", (shape,))
-
+	
 	shapetbl = db.tables['coordinate_shape']
 	shape_data = shapetbl.select().where(shapetbl.c.shape==shape).execute()
 	_, shape_data, shape_dist = shape_data.fetchone()
@@ -233,118 +249,112 @@ def filter_shape_routes(db, shape, raw_data_callback=lambda **kwargs: None):
 	
 	coord_cur = conn.cursor()
 	
-	for i, (departure, coordinates) in enumerate(get_shape_departures(db, shape)):
+	for i, (departure, coordinates) in enumerate(get_shape_departures(db, shape, override)):
 		if len(coordinates) < 10: continue
 		ts, lat, lon = np.array(coordinates).T
 		cart = np.array(zip(*coord_proj(lon, lat)))
 		
 		try:
 			yield departure, map_departure_to_route(ts, cart, shape_string,
+				departure,
 				raw_data_callback=raw_data_callback)
 		except RouteException:
 			continue
 
-
-	return
-	
-	for i, departure in enumerate(dep_cursor):
-		coord_cur.execute("""
-			select distinct extract(epoch from time-%s) as ts,
-				latitude, longitude
-			from coordinate_measurement
-			where
-				source=%s AND
-				time between %s and %s AND
-				latitude != 0 AND
-				longitude != 0
-			order by ts
-			""", (departure.departure_time,
-				departure.source,
-				departure.start_time,
-				departure.end_time))
-		
-		coordinates = coord_cur.fetchall()
-		if len(coordinates) < 10: continue
-		ts, lat, lon = np.array(coordinates).T
-		cart = np.array(zip(*coord_proj(lon, lat)))
-		
-		try:
-			yield departure, map_departure_to_route(ts, cart, shape_string,
-				raw_data_callback=raw_data_callback)
-		except RouteException:
-			continue
 
 def insert_routed_trace(routed_tbl, departure_tbl, mapping):
 	departure, trace = mapping
-	
-	result = routed_tbl.insert(dict(
-			reference_time=departure.departure_time,
-			shape=departure.shape,
-			timestamp=trace[0],
-			route_distance=trace[1],
-			route_speed=trace[2],
-			)).execute()
-	
+	trace = trace._asdict()
+	del trace['id']
+	if departure.routed_trace:
+		departure_tbl.update().\
+			where(departure_tbl.c.departure_id == departure.departure_id).\
+			values(routed_trace=None).execute()
+		routed_tbl.delete().where(routed_tbl.c.id == departure.routed_trace)
+
+	result = routed_tbl.insert(trace).execute()
 	departure_tbl.update().\
 		where(departure_tbl.c.departure_id == departure.departure_id).\
 		values(routed_trace=result.inserted_primary_key[0]).execute()
 
-def _fetch_shapes(conn):
+def _fetch_shapes(conn, override):
 	cur = conn.cursor()
-	cur.execute("""
+	q = """
 		select distinct shape
 		from transit_departure
 		where trace notnull
-		""")
+		"""
+	if not override:
+		q += "and routed_trace isnull"
+	cur.execute(q)
 	
 	return [r[0] for r in cur]
 
 
-def filter_routes(uri=schema.default_uri, shape=None):
+def filter_routes(uri=schema.default_uri, shape=None, override=False):
 	db = schema.connect(uri)
 	conn = db.bind.raw_connection()
 	
 	if shape is not None:
 		shapes = [shape]
 	else:
-		shapes = list(_fetch_shapes(conn))
+		shapes = list(_fetch_shapes(conn, override))
 	
 	routed_tbl = db.tables['routed_trace']
 	departure_tbl = db.tables['transit_departure']
 	n_shapes = len(shapes)
 	for i, shape in enumerate(shapes):
 		print >>sys.stderr, "Processing %i/%i shapes"%(i+1, n_shapes)
-		mappings = filter_shape_routes(db, shape)
+		mappings = filter_shape_routes(db, shape, override)
 		for mapping in mappings:
 			insert_routed_trace(routed_tbl, departure_tbl, mapping)
 
-def plot_shape_route_filtering(db, shape):
+def plot_shape_route_filtering(db, shape, override):
 	import matplotlib.pyplot as plt
+	import scipy.ndimage
 	
 	# Hacking the lack of nonlocal
 	rawdata = {}
 	def rawdata_callback(**kwargs):
 		rawdata.update(**kwargs)
 	shapeplot = None
-	for departure, (ts, dist, speed) in filter_shape_routes(db, shape, raw_data_callback=rawdata_callback):
+	timespent_grid = None
+	i = -1
+	res = filter_shape_routes(db, shape, override, raw_data_callback=rawdata_callback)
+	for i, (departure, record) in enumerate(res):
 		#rawcart = rawdata['raw_cart']
 		#if not shapeplot:
 		#	shapeplot = True
 		#rawts = rawdata['ts']
 		#rawdist = rawdata['route_distance']
+		plt.xlim(0, rawdata['shape_string'].length)
 		
 		#plt.plot(np.isfinite(ts))
 		#plt.plot(ts, dist, '.')
 		#plt.plot(dist, speed*3.6)
 		#plt.plot(x, y, '.')
-		plt.subplot(2,1,1)
+		#ax = plt.subplot(2,1,1)
 		#plt.plot(rawdata['shape_string'].xy[0], rawdata['shape_string'].xy[1])
-		#plt.plot(rawdata['cart'][:,0], rawdata['cart'][:,1])
-		plt.plot(rawdata['ts'], rawdata['route_distance'])
-		plt.plot(ts, dist)
-		plt.subplot(2,1,2)
-		plt.plot(ts, speed)
-		plt.show()
+		#plt.plot(rawdata['cart'][:,0], rawdata['cart'][:,1], '.')
+		#plt.show()
+		#plt.plot(rawdata['ts'], rawdata['route_distance'], '.')
+		#plt.plot(dist, speed)
+		ax = plt.subplot(1,1,1)
+		#ax.set_yscale('log', basey=2)
+		#plt.plot(dist, ts, color='black')
+		time_at_dist = record.time_at_distance_grid
+		distgrid = np.arange(0, len(time_at_dist))*record.distance_bin_width
+		#plt.plot(distgrid, time_at_dist)
+		plt.plot(record.route_distance, record.route_speed)
+		#if timespent_grid is None:
+		#	timespent_grid = timespent.copy()
+		#	timespent_grid[np.isnan(timespent_grid)] = 0.0
+		#else:
+		#	valid = np.isfinite(timespent)
+		#	timespent_grid[valid] += timespent[valid]
+		#plt.plot(rawdata['ts'][1:], np.diff(rawdata['ts']))
+		#plt.plot(rawdata['ts'], rawdata['err'])
+		#plt.show()
 		#plt.plot(dist, speed, color='black', alpha=0.1)
 		#plt.plot(ts, dist, color='black', alpha=0.1)
 		#plt.subplot(2,1,2)
@@ -355,8 +365,8 @@ def plot_shape_route_filtering(db, shape):
 		#plt.plot(rawdata['ts'], rawdata['route_distance'], 'r', label='raw')
 		#plt.plot(ts, dist, 'b', label='smoothed')
 	plt.show()
-
-def plot_route_filtering(uri=schema.default_uri, shape=None):
+	
+def plot_route_filtering(uri=schema.default_uri, shape=None, override=True):
 	"""Used mainly for testing"""
 
 	db = schema.connect(uri)
@@ -365,10 +375,10 @@ def plot_route_filtering(uri=schema.default_uri, shape=None):
 	if shape is not None:
 		shapes = [shape]
 	else:
-		shapes = list(_fetch_shapes(conn))
+		shapes = list(_fetch_shapes(conn, override))
 	
 	for shape in shapes:
-		plot_shape_route_filtering(db, shape)
+		plot_shape_route_filtering(db, shape, override)
 
 
 if __name__ == '__main__':

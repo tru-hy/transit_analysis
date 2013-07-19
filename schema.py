@@ -18,7 +18,9 @@ routed_trace = Table("routed_trace", metadata,
 	Column('shape', String(255)),
 	Column('timestamp', ARRAY(Float)),
 	Column('route_distance', ARRAY(Float)),
-	Column('route_speed', ARRAY(Float))
+	Column('route_speed', ARRAY(Float)),
+	Column('time_at_distance_grid', ARRAY(Float)),
+	Column('distance_bin_width', Float)
 	)
 
 measurement = Table("coordinate_measurement", metadata,

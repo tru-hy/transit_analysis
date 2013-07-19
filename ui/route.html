@@ -21,40 +21,49 @@
 <link rel="stylesheet" href="static/css/transit_analysis.css" type="text/css"/>
 
 <script type="text/coffeescript">
+class DataController
+	constructor: ->
+		@cursor = new TrusasCursor()
+
+		query = $.deparam(window.location.search[1..])
+		@shape_promise = $.getJSON \
+			"resources/coordinate_shape.json?"+$.param(_.pick(query, 'shape'))
+
+		traces_query = "resources/departure_traces.json"+window.location.search
+		@traces_promise = $.getJSON traces_query
+			
+		@shape_promise.done @_setup_cursor
+	
+	_setup_cursor: (data) =>
+		[lats, lons] = _.zip(data.coordinates...)
+		@cursor.accommodateAxisRange _.min(data.distances), _.max(data.distances)
+		@pos_to_coords = Trusas.coord_interp data.distances, lats, lons
+		@cursorpath = Trusas.rangepath data.distances, lats, lons
+
+		
+
 $ ->
 	cursor = new TrusasCursor()
 	cursorpath = -> []
 	
-	route_map = new Trusas.Map $("#route-map")[0]
+	ctrl = new DataController()
 
-	query = $.deparam(window.location.search[1..])
-	shape_promise = $.getJSON \
-		"resources/coordinate_shape.json?"+$.param(_.pick(query, 'shape'))
-	
-	shape_promise.done (data) ->
+	ctrl.shape_promise.done (data) ->
+		route_map = new Trusas.Map $("#route-map")[0]
 		route_map.add_route "default", data.coordinates
-		
-		[lats, lons] = _.zip(data.coordinates...)
-		pos_to_coords = Trusas.coord_interp data.distances, lats, lons
-		cursorpath = Trusas.rangepath data.distances, lats, lons
-		
-		$(cursor).on "activeRangeChange", (e, rng) ->
-			subpath = cursorpath rng...
+
+		$(ctrl.cursor).on "activeRangeChange", (e, rng) ->
+			subpath = ctrl.cursorpath rng...
 			extent = Trusas.coords_extent subpath
 			route_map.set_extent extent
 
-		$(cursor).on "hoverPositionChange", (e, pos) ->
-			coords = pos_to_coords pos
+		$(ctrl.cursor).on "hoverPositionChange", (e, pos) ->
+			coords = ctrl.pos_to_coords pos
 			if not coords[0]?
 				coords = undefined
 			route_map.set_hover coords
-			console.log coords
 
-		cursor.accommodateAxisRange _.min(data.distances), _.max(data.distances)
-	
-	traces_query = "resources/departure_traces.json"+window.location.search
-	traces_promise = $.getJSON traces_query
-	
+
 	###
 	traces_promise.done (data) ->
 		series = []
@@ -104,15 +113,32 @@ $ ->
 		
 
 	###
-	traces_promise.done (data) ->
+	ctrl.traces_promise.done (data) ->
 		drives = []
+		
+		diff = (x) ->
+			(x[i] - x[i-1] for i in [1..x.length-1])
+
+		nulltonan = (x) ->
+			for i in [0..x.length]
+				if not x[i]?
+					x[i] = NaN
+			return x
+
+		dist_grid_len = data[0].time_at_distance_grid.length
+
+		dist_bin_width = data[0].distance_bin_width
+		dist_grid = (i*dist_bin_width for i in [0..dist_grid_len])
 		for d in data
 			drive = {}
-			drive.data = _.zip(d.route_distance, d.route_speed)
+			#drive.data = _.zip(d.route_distance, d.route_speed)
+			t_at_d = nulltonan d.time_at_distance_grid
+			drive.data = _.zip(dist_grid[1..], diff t_at_d)
 			drive.color = "rgba(0,0,0,0.1)"
 			drive.shadowSize = 0
 			drives.push drive
 		
+		timeticks = [0, 1, 5, 10, 15, 30, 60, 120, 300, 600]
 		el = $("#route-speed")
 		plot = $.plot el, drives,
 			zoom: interactive: true
@@ -120,9 +146,12 @@ $ ->
 			yaxis:
 				panRange: false
 				zoomRange: false
+				min: 0.5
+				ticks: timeticks
+				transform: (x) -> Math.log(x+1)
 			xaxis:
-				panRange: cursor.getAxisRange()
-				zoomRange: cursor.getAxisRange()
+				panRange: ctrl.cursor.getAxisRange()
+				zoomRange: ctrl.cursor.getAxisRange()
 			grid: hoverable: true
 			crosshair: mode: 'x'
 
@@ -130,14 +159,15 @@ $ ->
 			axes = plot.getAxes()
 			start = axes.xaxis.min
 			end = axes.xaxis.max
-			cursor.setActiveRange([start, end])
+			ctrl.cursor.setActiveRange([start, end])
 		
 		$(el).bind "plotzoom", update_cursor
 		$(el).bind "plotpan", update_cursor
 
 		$(el).bind "plothover", (event, pos, item) ->
-			cursor.setHoverPosition pos.x
-			#coords = route.dist_to_coords(pos.x)
+			ctrl.cursor.setHoverPosition pos.x
+		
+
 
 	
 	#data_promise.fail (promise, reason, message) ->
