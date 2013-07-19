@@ -24,25 +24,43 @@
 
 <script type="text/coffeescript">
 
-discretize = (values, bins) ->
+histogram = (values, bins) ->
 		min = Math.min values...
 		max = Math.max values...
 		step = (max - min)/bins
-		# UGLY
-		binvals = []
-		hist = []
-		for i in [0..bins+1]
-			binval = i*step
-			binvals.push binval
-			hist.push 0
+		values = _.sortBy values, (x) -> x
 		
+		hist = [[min+step, 0]]
+		currow = hist[0]
 		for v in values
-			bin = Math.round((v-min)/step)
-			hist[bin] += 1
-		return [step, ([binvals[i],hist[i]] for i in [0..bins+1])]
+			while v > currow[0]
+				currow = [currow[0]+step, 0]
+				hist.push currow
+			currow[1] += 1
+		return [step, hist]
 
 nonnans = (xs) -> (x for x in xs if x == x)
 
+find_next_valid = (a, idx, thres=10) ->
+	for i in [idx...idx+thres]
+		if i >= a.length
+			break
+		if a[i] == a[i]
+			return a[i]
+	return NaN
+	
+find_prev_valid = (a, idx, thres=10) ->
+	start = Math.max(idx-thres, 0)
+	for i in [start..idx]
+		if a[i] == a[i]
+			return a[i]
+	return NaN
+
+find_close_valid = (a, idx, dir=1, thres=100) ->
+	funcs = [find_next_valid, find_prev_valid]
+	v = funcs[0] a, idx, thres
+	return v if v == v
+	v = funcs[1] a, idx, thres
 
 class DataController
 	constructor: ->
@@ -223,6 +241,7 @@ $ ->
 
 		dist_bin_width = data[0].distance_bin_width
 		dist_grid = (i*dist_bin_width for i in [0..dist_grid_len])
+		"""
 		for d in data
 			drive = {}
 			#drive.data = _.zip(d.route_distance, d.route_speed)
@@ -230,6 +249,7 @@ $ ->
 			drive.color = "rgba(0,0,0,0.1)"
 			drive.shadowSize = 0
 			drives.push drive
+		"""
 		
 		drives.push
 			data: _.zip(ctrl.distance_grid, ctrl.time_spent_stats.median)
@@ -285,16 +305,19 @@ $ ->
 			durations = []
 			for d in ctrl.data
 				t_at_d = d.time_at_distance_grid
-				duration = t_at_d[end] - t_at_d[start]
+				duration = find_close_valid(t_at_d, end, 1) - find_close_valid(t_at_d, start, -1)
 				continue if duration != duration
+				continue if duration == 0
 				durations.push duration
 			
-			[binsize, binned] = discretize(durations, 15)
+			[binsize, binned] = histogram(durations, 15)
 			$.plot $("#route-duration"), [{data: binned}],
 				bars:
 					show: true
 					barWidth: binsize
-		
+				xaxis:
+					tickFormatter: format_seconds
+
 		$(ctrl.cursor).on "activeRangeChange", plot_durations
 		plot_durations()
 	
@@ -305,8 +328,9 @@ $ ->
 			durations = []
 			for d in ctrl.data
 				t_at_d = d.time_at_distance_grid
-				duration = t_at_d[end] - t_at_d[start]
+				duration = find_close_valid(t_at_d, end, 1) - find_close_valid(t_at_d, start, -1)
 				continue if duration != duration
+				continue if duration == 0
 				date = new Date d.departure_time
 				minutes = date.getHours()*60 + date.getMinutes()
 				durations.push [minutes, duration]
