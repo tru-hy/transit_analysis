@@ -39,6 +39,8 @@ discretize = (values, bins) ->
 			hist[bin] += 1
 		return [step, ([binvals[i],hist[i]] for i in [0..bins+1])]
 
+nonnans = (xs) -> (x for x in xs if x == x)
+
 
 class DataController
 	constructor: ->
@@ -81,6 +83,27 @@ class DataController
 		for d in data
 			d.time_at_distance = nulltonan d.time_at_distance_grid
 			d.time_spent = diff d.time_at_distance
+		
+		@time_spent_stats =
+			mean: []
+			std: []
+
+		for i in [0..@distance_grid.length]
+			valid = []
+			sum = 0.0
+			logsum = 0.0
+			for d in data
+				v = d.time_spent[i]
+				continue if v != v
+				sum += v
+				valid.push v
+			mean = sum/valid.length
+			@time_spent_stats.mean.push sum/valid.length
+			sqsum = 0.0
+			for v in valid
+				delta = v-mean
+				sqsum += delta*delta
+			@time_spent_stats.std.push Math.sqrt(sqsum/(valid.length-1))
 	
 	distanceGridIndex: (dist) =>
 		return Math.round dist/@distance_bin_width
@@ -176,6 +199,18 @@ $ ->
 			drive.shadowSize = 0
 			drives.push drive
 		
+		drives.push
+			data: _.zip(ctrl.distance_grid, ctrl.time_spent_stats.mean)
+			color: "blue"
+			shadowSize: 0
+		
+		normstd = (ctrl.time_spent_stats.std[i]/ctrl.time_spent_stats.mean[i]\
+			for i in [0..dist_grid_len])
+		drives.push
+			data: _.zip(ctrl.distance_grid, normstd)
+			color: "red"
+			shadowSize: 0
+
 		timeticks = [0, 1, 5, 10, 15, 30, 60, 120, 300, 600]
 		el = $("#route-speed")
 		plot = $.plot el, drives,
