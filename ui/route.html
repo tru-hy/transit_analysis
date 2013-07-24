@@ -3,6 +3,7 @@
 <script type="text/javascript" src="static/js/coffee-script.js"></script>
 
 <script type="text/coffeescript" src="static/js/trusas.core.coffee"></script>
+<script type="text/coffeescript" src="static/js/transit_analysis.coffee"></script>
 
 <script type="text/javascript" src="static/js/Cesium/Cesium.js"></script>
 <link rel="stylesheet" href="static/css/transit_analysis.css" type="text/css" src="static/js/Cesium/Widgets/CesiumWidget/CesiumWidget.css" />
@@ -23,8 +24,49 @@
 
 <link rel="stylesheet" href="static/css/transit_analysis.css" type="text/css"/>
 
-<script type="text/coffeescript">
 
+<script type="text/javascript">
+// From https://developer.mozilla.org/en-US/docs/Web/JavaScript/Base64_encoding_and_decoding
+function b64ToUint6 (nChr) {
+
+  return nChr > 64 && nChr < 91 ?
+      nChr - 65
+    : nChr > 96 && nChr < 123 ?
+      nChr - 71
+    : nChr > 47 && nChr < 58 ?
+      nChr + 4
+    : nChr === 43 ?
+      62
+    : nChr === 47 ?
+      63
+    :
+      0;
+
+}
+
+
+function base64DecToArr (sBase64, nBlocksSize) {
+  var
+    sB64Enc = sBase64.replace(/[^A-Za-z0-9\+\/]/g, ""), nInLen = sB64Enc.length,
+    nOutLen = nBlocksSize ? Math.ceil((nInLen * 3 + 1 >> 2) / nBlocksSize) * nBlocksSize : nInLen * 3 + 1 >> 2, taBytes = new Uint8Array(nOutLen);
+
+  for (var nMod3, nMod4, nUint24 = 0, nOutIdx = 0, nInIdx = 0; nInIdx < nInLen; nInIdx++) {
+    nMod4 = nInIdx & 3;
+    nUint24 |= b64ToUint6(sB64Enc.charCodeAt(nInIdx)) << 18 - 6 * nMod4;
+    if (nMod4 === 3 || nInLen - nInIdx === 1) {
+      for (nMod3 = 0; nMod3 < 3 && nOutIdx < nOutLen; nMod3++, nOutIdx++) {
+        taBytes[nOutIdx] = nUint24 >>> (16 >>> nMod3 & 24) & 255;
+      }
+      nUint24 = 0;
+
+    }
+  }
+
+  return taBytes;
+}
+</script>
+
+<script type="text/coffeescript">
 histogram = (values, bins) ->
 		min = Math.min values...
 		max = Math.max values...
@@ -63,10 +105,9 @@ find_close_valid = (a, idx, dir=1, thres=100) ->
 	return v if v == v
 	v = funcs[1] a, idx, thres
 
-
-
 class DataController
-	constructor: ->
+	constructor: (@con) ->
+		
 		@cursor = new TrusasCursor()
 
 		query = $.deparam(window.location.search[1..])
@@ -74,7 +115,11 @@ class DataController
 			"resources/coordinate_shape.json?"+$.param(_.pick(query, 'shape'))
 
 		traces_query = "resources/departure_traces.json"+window.location.search
-		@traces_promise = $.getJSON traces_query
+		@traces_promise = @con.multiget
+			distance_grid: {}
+			time_spent_stats: {}
+			speed_stats: {}
+			departures: {}
 			
 		@shape_promise.done @_setup_cursor
 		@traces_promise.done @_setup_data
@@ -84,73 +129,18 @@ class DataController
 		@cursor.accommodateAxisRange _.min(data.distances), _.max(data.distances)
 		@pos_to_coords = Trusas.coord_interp data.distances, lats, lons
 		@cursorpath = Trusas.rangepath data.distances, lats, lons
+
+		$(@cursor).on "activeRangeChange", (e, rng) =>
+			p = @con.get "span_durations",
+				start: rng[0], end: rng[1]
+			p.done (data) =>
+				@span_durations = data
+				$(@).trigger "spanDurationsChange", [data]
 	
 	_setup_data: (data) =>
-		@data = data
+		for key of data
+			@[key] = data[key]
 
-		dist_grid_len = data[0].time_at_distance_grid.length
-
-		dist_bin_width = data[0].distance_bin_width
-		@distance_bin_width = data[0].distance_bin_width
-		@distance_grid = (i*dist_bin_width for i in [0..dist_grid_len])
-
-		diff = (x) ->
-			(x[i] - x[i-1] for i in [1..x.length-1])
-
-		nulltonan = (x) ->
-			for i in [0..x.length]
-				if not x[i]?
-					x[i] = NaN
-			return x
-
-		for d in data
-			d.time_at_distance = nulltonan d.time_at_distance_grid
-			d.time_spent = diff d.time_at_distance
-			d.speed = (1.0/v*dist_bin_width*3.6 for v in d.time_spent)
-		
-		@distance_grid = @distance_grid[1..]
-				
-		@time_spent_stats = @calculate_grid_stats('time_spent')
-		@speed_stats = @calculate_grid_stats('speed')
-
-	
-	calculate_grid_stats: (field) ->
-		stats =
-			mean: []
-			lowp: []
-			lowq: []
-			median: []
-			highq: []
-			highp: []
-			ipr: []
-			std: []
-	
-		for i in [0...@distance_grid.length]
-			valid = []
-			sum = 0.0
-			for d in @data
-				v = d[field][i]
-				continue if v != v
-				sum += v
-				valid.push v
-			mean = sum/valid.length
-			stats.mean.push sum/valid.length
-			[lp, lq, m, hq, hp] = science.stats.quantiles valid, [.05, .25, .5, .75, .95]
-			stats.lowp.push lp
-			stats.lowq.push lq
-			stats.median.push m
-			stats.highq.push hq
-			stats.highp.push hp
-			stats.ipr.push hp - lp
-			
-			sqsum = 0.0
-			for v in valid
-				delta = v-mean
-				sqsum += delta*delta
-			stats.std.push Math.sqrt(sqsum/(valid.length-1))
-		return stats
-
-		
 	distanceGridIndex: (dist) =>
 		return Math.round dist/@distance_bin_width
 
@@ -182,12 +172,9 @@ header_template = _.template """
 		Route <%= route_variant %>, direction <%= direction %>, shape <%= shape %>
 	"""
 
-$ ->
-	query = $.deparam(window.location.search[1..])
-	$("#session-info").html(header_template(query))
-		
 
-	ctrl = new DataController()
+_setup = (stats_session) ->
+	ctrl = new DataController(stats_session)
 	
 	ctrl.shape_promise.done (data) ->
 		$(ctrl.cursor).on "activeRangeChange", (e, rng) ->
@@ -272,39 +259,24 @@ $ ->
 
 	###
 	ctrl.traces_promise.done ->
-		data = ctrl.data
-		drives = []
-		
-		
-		dist_grid_len = data[0].time_at_distance_grid.length
-
-		###
-		for d in data
-			drive = {}
-			#drive.data = _.zip(ctrl.distance_grid, d.speed)
-			drive.data = _.zip(ctrl.distance_grid, d.time_spent)
-			drive.color = "rgba(0,0,0,0.1)"
-			drive.shadowSize = 0
-			drives.push drive
-		###
-		
 		stats = ctrl.speed_stats
-	
+
+		
+		items = []
+
 		color = "black"
-		drives.push
+		items.push
 			data: _.zip(ctrl.distance_grid, stats.median)
 			color: color
 		
-		normstd = (stats.ipr[i]/stats.median[i]\
-			for i in [0..dist_grid_len])
-		drives.push
+		items.push
 			data: _.zip(ctrl.distance_grid, stats.lowp)
 			id: 'lowp'
 			shadowSize: 0
 			lines: show: true, fill: false, lineWidth: 0
 			color: color
 		
-		drives.push
+		items.push
 			data: _.zip(ctrl.distance_grid, stats.highp)
 			shadowSize: 0
 			fillBetween: 'lowp'
@@ -312,24 +284,24 @@ $ ->
 			color: color
 			lines: show: true, fill: 0.3, lineWidth: 0
 		
-		drives.push
+		items.push
 			data: _.zip(ctrl.distance_grid, stats.lowq)
 			id: 'lowq'
 			shadowSize: 0
 			color: color
 			lines: show: true, fill: false, lineWidth: 0
 		
-		drives.push
+		items.push
 			data: _.zip(ctrl.distance_grid, stats.highq)
 			shadowSize: 0
 			fillBetween: 'lowq'
 			lineWidth: 0
 			color: color
 			lines: show: true, fill: 0.3, lineWidth: 0
-
+		
 		timeticks = [0, 1, 5, 10, 20, 30, 60, 120, 300, 600]
 		el = $("#route-speed")
-		plot = $.plot el, drives,
+		plot = $.plot el, items,
 			zoom: interactive: true
 			pan: interactive: true
 			yaxis:
@@ -360,28 +332,18 @@ $ ->
 		$(el).bind "plothover", (event, pos, item) ->
 			ctrl.cursor.setHoverPosition pos.x
 	
-	ctrl.traces_promise.done ->
-		plot_durations = ->
-			rng = ctrl.cursor.getActiveRange()
-			[start, end] = (ctrl.distanceGridIndex x for x in rng)
-			durations = []
-			for d in ctrl.data
-				t_at_d = d.time_at_distance_grid
-				duration = find_close_valid(t_at_d, end, 1) - find_close_valid(t_at_d, start, -1)
-				continue if duration != duration
-				continue if duration == 0
-				durations.push duration
-			
-			[binsize, binned] = histogram(durations, 15)
-			$.plot $("#route-duration"), [{data: binned, color: "black"}],
-				bars:
-					show: true
-					barWidth: binsize
-				xaxis:
-					tickFormatter: format_seconds
+	plot_durations = ->
+		durations = ctrl.span_durations
+		[binsize, binned] = histogram(durations, 15)
+		$.plot $("#route-duration"), [{data: binned, color: "black"}],
+			bars:
+				show: true
+				barWidth: binsize
+			xaxis:
+				tickFormatter: format_seconds
 
-		$(ctrl.cursor).on "activeRangeChange", plot_durations
-		plot_durations()
+	$(ctrl).on "spanDurationsChange", plot_durations
+	plot_durations()
 	
 	ctrl.traces_promise.done ->
 		plot_dur_tod = ->
@@ -418,7 +380,13 @@ $ ->
 
 		$(ctrl.cursor).on "activeRangeChange", plot_dur_tod
 		plot_dur_tod()
-			
+
+$ ->
+	query = $.deparam(window.location.search[1..])
+	$("#session-info").html(header_template(query))
+	
+	promise = TransitStatsSession query, _setup
+
 </script>
 <div id="session-info"></div>
 <div class="widget-container">

@@ -6,6 +6,7 @@ import urlparse
 import sqlalchemy as sqa
 
 from trusas_server import session_server, providers, serialize
+from transit_analysis import recordtypes
 import schema
 
 def _to_nulls(lst):
@@ -148,6 +149,7 @@ class ShapeSession:
 			[r.time_at_distance_grid for r in self._result]
 			)
 		self._time_spent = np.diff(self._timegrid, axis=1)
+		self._speed = 1.0/self._time_spent
 		self._timegrid = self._timegrid[:,1:]
 		maxdist = self._timegrid.shape[1]*self._binwidth
 		self._distgrid = np.arange(0, maxdist, self._binwidth)[1:]
@@ -180,7 +182,15 @@ class ShapeSession:
 					for k, v in urlparse.parse_qs(parts[1]).items()}
 			result[method] = self._handle(method, **kwargs)
 		return result
-
+	
+	def departures(self):
+		out = OrderedDict()
+		fields = recordtypes.transit_departure._fields
+		for r in self._result:
+			obj = {k: r[k] for k in fields if k in r}
+			out[r.departure_id] = obj
+		return out
+			
 
 	def departure_keys(self):
 		return [r.departure_id for r in self._result]
@@ -189,7 +199,6 @@ class ShapeSession:
 		return self._distgrid
 	
 	def time_spent_stats(self):
-		return self._time_spent.shape
 		percs = (
 			('lowp', 0.05),
 			('lowq', 0.25),
@@ -198,6 +207,17 @@ class ShapeSession:
 			('highp', 0.95))
 		results = axispercentile(self._time_spent, zip(*percs)[1])
 		return {percs[i][0]: results[i] for i in range(len(percs))}
+	
+	def speed_stats(self):
+		percs = (
+			('lowp', 0.05),
+			('lowq', 0.25),
+			('median', 0.5),
+			('highq', 0.75),
+			('highp', 0.95))
+		results = axispercentile(self._speed, zip(*percs)[1])
+		return {percs[i][0]: results[i] for i in range(len(percs))}
+
 	
 	def distance_bin(self, distance):
 		return int(distance/self._binwidth)
