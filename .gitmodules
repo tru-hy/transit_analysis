@@ -1,3 +1,7 @@
 [submodule "ext/obs_splines"]
 	path = ext/obs_splines
-	url = git@gitorious.org:tru/obs_splines.git
+	url = https://github.com/tru-hy/obs_splines.git
+[submodule "ext/pymapmatch"]
+	path = ext/pymapmatch
+	url = https://github.com/tru-hy/pymapmatch.git
+	branch = master
