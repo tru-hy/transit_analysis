@@ -155,6 +155,9 @@ class DataController
 		return Math.round dist/@distance_bin_width
 
 format_seconds = (seconds) ->
+	return seconds
+	# TODO: See if something sensical can
+	# be made of this
 	hours = Math.floor(seconds/(60*60))
 	seconds -= hours*60*60
 	minutes = Math.floor(seconds/60)
@@ -173,9 +176,17 @@ format_seconds = (seconds) ->
 			str += " #{seconds}s"
 		return str
 	return "#{seconds}s"
-	
+
+header_template = _.template """
+	<a href="index.html">&lt;&lt; Back</a> |
+		Route <%= route_variant %>, direction <%= direction %>, shape <%= shape %>
+	"""
 
 $ ->
+	query = $.deparam(window.location.search[1..])
+	$("#session-info").html(header_template(query))
+		
+
 	ctrl = new DataController()
 	
 	ctrl.shape_promise.done (data) ->
@@ -316,7 +327,7 @@ $ ->
 			color: color
 			lines: show: true, fill: 0.3, lineWidth: 0
 
-		#timeticks = [0, 1, 5, 10, 20, 30, 60, 120, 300, 600]
+		timeticks = [0, 1, 5, 10, 20, 30, 60, 120, 300, 600]
 		el = $("#route-speed")
 		plot = $.plot el, drives,
 			zoom: interactive: true
@@ -324,9 +335,10 @@ $ ->
 			yaxis:
 				panRange: false
 				zoomRange: false
-				min: 0.5
+				#min: 0.0
 				#ticks: timeticks
 				#tickFormatter: format_seconds
+				#max: 120
 				#transform: (x) -> Math.log(x+1)
 			xaxis:
 				panRange: ctrl.cursor.getAxisRange()
@@ -408,8 +420,10 @@ $ ->
 		plot_dur_tod()
 			
 </script>
-
+<div id="session-info"></div>
+<div class="widget-container">
 <div id="route-map" style="width: 600px; height: 600px; float: left;"></div>
 <div id="route-speed" style="width: 49%; height: 200px; float: left;"></div>
-<div id="route-duration" style="width: 49%; height: 200px; float: left;"></div>
-<div id="duration-by-tod" style="width: 49%; height: 200px; float: left;"></div>
+<div id="route-duration" style="width: 49%; min-height: 200px; float: left;"></div>
+<div id="duration-by-tod" style="width: 49%; min-height: 200px; float: left;"></div>
+</div>
