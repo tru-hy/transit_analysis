@@ -343,43 +343,35 @@ _setup = (stats_session) ->
 				tickFormatter: format_seconds
 
 	$(ctrl).on "spanDurationsChange", plot_durations
-	plot_durations()
+	ctrl.traces_promise.done plot_durations
 	
-	ctrl.traces_promise.done ->
-		plot_dur_tod = ->
-			rng = ctrl.cursor.getActiveRange()
-			[start, end] = (ctrl.distanceGridIndex x for x in rng)
-			durations = []
-			for d in ctrl.data
-				t_at_d = d.time_at_distance_grid
+	plot_dur_tod = ->
+		durations = ctrl.span_durations
+		for i in [0...durations.length]
+			date = new Date ctrl.departures[i].departure_time
+			minutes = date.getHours()*60 + date.getMinutes()
+			durations.push [minutes, durations[i]]
 
-				duration = find_close_valid(t_at_d, end, 1) - find_close_valid(t_at_d, start, -1)
-				continue if duration != duration
-				continue if duration == 0
-				date = new Date d.departure_time
-				minutes = date.getHours()*60 + date.getMinutes()
-				durations.push [minutes, duration]
+		$.plot $("#duration-by-tod"), [{data: durations, color: "rgb(0,0,0,0.5)"}],
+			series:
+				points:
+					radius: 3
+					show: true
+					fill: true
+					fillColor: "black"
+					lineWidth: 0
+			xaxis:
+				tickFormatter: (x) ->
+					hours = Math.floor(x/60)
+					minutes = String(x - hours*60)
+					if minutes.length < 2
+						minutes = "0" + minutes
+					"#{hours}:#{minutes}"
+			yaxis:
+				tickFormatter: format_seconds
 
-			$.plot $("#duration-by-tod"), [{data: durations, color: "rgb(0,0,0,0.5)"}],
-				series:
-					points:
-						radius: 3
-						show: true
-						fill: true
-						fillColor: "black"
-						lineWidth: 0
-				xaxis:
-					tickFormatter: (x) ->
-						hours = Math.floor(x/60)
-						minutes = String(x - hours*60)
-						if minutes.length < 2
-							minutes = "0" + minutes
-						"#{hours}:#{minutes}"
-				yaxis:
-					tickFormatter: format_seconds
-
-		$(ctrl.cursor).on "activeRangeChange", plot_dur_tod
-		plot_dur_tod()
+	$(ctrl).on "spanDurationsChange", plot_dur_tod
+	ctrl.traces_promise.done plot_dur_tod
 
 $ ->
 	query = $.deparam(window.location.search[1..])

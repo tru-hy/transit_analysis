@@ -152,7 +152,7 @@ class ShapeSession:
 		self._speed = 1.0/self._time_spent
 		self._timegrid = self._timegrid[:,1:]
 		maxdist = self._timegrid.shape[1]*self._binwidth
-		self._distgrid = np.arange(0, maxdist, self._binwidth)[1:]
+		self._distgrid = np.arange(0, maxdist, self._binwidth)[:-1]
 	
 	def _mymethods(self):
 		return [d for d in dir(self) if not d.startswith('_')]
@@ -184,11 +184,11 @@ class ShapeSession:
 		return result
 	
 	def departures(self):
-		out = OrderedDict()
+		out = []
 		fields = recordtypes.transit_departure._fields
 		for r in self._result:
 			obj = {k: r[k] for k in fields if k in r}
-			out[r.departure_id] = obj
+			out.append(obj)
 		return out
 			
 
@@ -258,9 +258,7 @@ class RouteStatisticsProvider:
 		if session_key not in self.sessions:
 			self.sessions[session_key] = ShapeSession(self.db, **kwargs)
 
-		response = {'session_key': session_key}
-		return ({'Content-Type': "application/json"}, serialize.dumps(response))
-	
+		return serialize.result({'session_key': session_key})
 	
 		
 	
