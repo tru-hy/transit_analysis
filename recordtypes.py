@@ -15,8 +15,8 @@ def defaultnamedtuple(name, fields, *args, **kwargs):
 			if name in kwargs: continue
 			kwargs[name] = defaults[name]
 		return impl(*args, **kwargs)
+	construct._fields = names
 	return construct
-	
 
 transit_departure = defaultnamedtuple("transit_departure", (
 	'departure_id',
@@ -29,7 +29,6 @@ transit_departure = defaultnamedtuple("transit_departure", (
 	('routed_trace', None),
 	('attributes', None)
 	))
-
 
 coordinate_measurement = defaultnamedtuple("coordinate_measurement", (
 	'source',
