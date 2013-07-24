@@ -1,6 +1,7 @@
 from StringIO import StringIO
 import os
 from collections import OrderedDict
+import urlparse
 
 import sqlalchemy as sqa
 
@@ -104,8 +105,7 @@ def coordinate_shape(db, shape):
 def nocols(tbl, *exclude):
 	return [tbl.c[n] for (n) in tbl.c.keys() if n not in exclude]
 
-@db_provider()
-def departure_traces(db, shape, route_variant=None, direction=None):
+def get_departure_traces(db, shape, route_variant=None, direction=None):
 	dep = db.tables['transit_departure']
 	tr = db.tables['routed_trace']
 	
@@ -121,9 +121,129 @@ def departure_traces(db, shape, route_variant=None, direction=None):
 	if direction is not None:
 		query = query.where(dep.c.direction==direction)
 	
-	result = db.bind.execute(query)
-	return resultoutput(result)
+	return db.bind.execute(query)
 
+@db_provider()
+def departure_traces(db, **kwargs):
+	return resultoutput(get_departure_traces(db, **kwargs))
+
+import numpy as np
+import scipy.stats
+
+def axispercentile(values, percentiles):
+	# TODO: WOW, how slow is this!
+	results = np.empty((len(percentiles), values.shape[1]))
+	for p, percentile in enumerate(percentiles):
+		for i in range(values.shape[1]):
+			results[p][i] = scipy.stats.scoreatpercentile(values[:,i],
+				percentile*100)
+	return results
+
+class ShapeSession:
+	def __init__(self, db, **kwargs):
+		self._query = kwargs
+		self._result = list(get_departure_traces(db, **kwargs))
+		self._binwidth = self._result[0].distance_bin_width
+		self._timegrid = np.vstack(
+			[r.time_at_distance_grid for r in self._result]
+			)
+		self._time_spent = np.diff(self._timegrid, axis=1)
+		self._timegrid = self._timegrid[:,1:]
+		maxdist = self._timegrid.shape[1]*self._binwidth
+		self._distgrid = np.arange(0, maxdist, self._binwidth)[1:]
+	
+	def _mymethods(self):
+		return [d for d in dir(self) if not d.startswith('_')]
+	
+	def __call__(self, *path, **kwargs):
+		return serialize.result(self._handle(*path, **kwargs))
+
+	def _handle(self, *path, **kwargs):
+		if len(path) == 0:
+			return dict(query=self._query, methods=self._mymethods())
+		if len(path) == 1 and "&" not in path[0]:
+			if path[0].startswith('_'):
+				raise AttributeError
+			if not hasattr(self, path[0]):
+				raise AttributeError
+			
+			return getattr(self, path[0])(**kwargs)
+
+		result = {}
+		for query in path:
+			parts = query.split('&', 1)
+			method = parts[0]
+			if len(parts) == 1:
+				kwargs = {}
+			else:
+				kwargs = {k: v[0]
+					for k, v in urlparse.parse_qs(parts[1]).items()}
+			result[method] = self._handle(method, **kwargs)
+		return result
+
+
+	def departure_keys(self):
+		return [r.departure_id for r in self._result]
+	
+	def distance_grid(self):
+		return self._distgrid
+	
+	def time_spent_stats(self):
+		return self._time_spent.shape
+		percs = (
+			('lowp', 0.05),
+			('lowq', 0.25),
+			('median', 0.5),
+			('highq', 0.75),
+			('highp', 0.95))
+		results = axispercentile(self._time_spent, zip(*percs)[1])
+		return {percs[i][0]: results[i] for i in range(len(percs))}
+	
+	def distance_bin(self, distance):
+		return int(distance/self._binwidth)
+	
+	def span_durations(self, start, end):
+		s = self.distance_bin(float(start))
+		e = self.distance_bin(float(end))
+		return self._timegrid[:,e] - self._timegrid[:,s]
+
+class RouteStatisticsProvider:
+	def __init__(self, db, mypath="route_statistics"):
+		self.mypath = mypath
+		self.sessions = {}
+		self.db = db
+	
+	def provides(self):
+		return {self.mypath: "application/json"}
+
+	def __call__(self, *path, **kwargs):
+		if len(path) == 0:
+			return None
+		if path[0] != self.mypath:
+			return None
+		if len(path) >= 2:
+			return self._load_session(path[1])(*path[2:], **kwargs)
+		
+		return self._new_session(**kwargs)
+	
+	def _load_session(self, session_key):
+		if session_key in self.sessions:
+			return self.sessions[session_key]
+		kwargs = {k: v[0] for k, v in urlparse.parse_qs(session_key).items()}
+		self._new_session(**kwargs)
+		return self.sessions[session_key]
+
+	def _new_session(self, **kwargs):
+		session_key = "&".join(("%s=%s"%(k, v) for k, v in kwargs.items()))
+		if session_key not in self.sessions:
+			self.sessions[session_key] = ShapeSession(self.db, **kwargs)
+
+		response = {'session_key': session_key}
+		return ({'Content-Type': "application/json"}, serialize.dumps(response))
+	
+	
+		
+	
 def main(uri=schema.default_uri):
 	import cherrypy as cp
 	
@@ -132,7 +252,8 @@ def main(uri=schema.default_uri):
 		transit_routes(db),
 		coordinate_shape(db),
 		coordinate_shapes(db),
-		departure_traces(db)
+		departure_traces(db),
+		RouteStatisticsProvider(db)
 		]
 	
 	resources = session_server.ResourceServer(providers)
@@ -149,3 +270,4 @@ def main(uri=schema.default_uri):
 if __name__ == '__main__':
 	import argh
 	argh.dispatch_command(main)
+
