@@ -220,7 +220,8 @@ class ShapeSession:
 
 	
 	def distance_bin(self, distance):
-		return int(distance/self._binwidth)
+		return min(max(0, int(distance/self._binwidth)),
+			len(self._distgrid) - 1)
 	
 	def span_durations(self, start, end):
 		s = self.distance_bin(float(start))
