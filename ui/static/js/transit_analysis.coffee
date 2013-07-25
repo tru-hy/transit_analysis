@@ -79,3 +79,29 @@ class @TransitStats
 			query += "/"
 		Trusas.getJSON query
 
+class Signal
+	constructor: (@owner, @name) ->
+	
+	on: (cb) =>
+		bean.on @owner, @name, cb
+	off: (cb) =>
+		bean.off @owner, @name, cb
+	trigger: (args...) =>
+		bean.fire @owner, @name, args
+
+class @DynamicValue
+	constructor: (@_fetcher) ->
+		@_value = undefined
+		@_args = undefined
+		signames = ['update']
+		@["$"+s] = new Signal @, s for s in signames
+	
+	value: => @_value
+
+	refresh: (args...) =>
+		@_args = args
+		@_fetcher(args...)
+			.done @_setValue
+	
+	_setValue: (@_value) =>
+		@$update.trigger @_value

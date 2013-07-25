@@ -1,4 +1,5 @@
 <script type="text/javascript" src="static/js/jquery.js"></script>
+<script type="text/javascript" src="static/js/bean.js"></script>
 <script type="text/javascript" src="static/js/jquery-deparam.js"></script>
 <script type="text/javascript" src="static/js/coffee-script.js"></script>
 
@@ -84,18 +85,19 @@ class DataController
 		
 		@shape_promise.done @_setup_cursor
 		@traces_promise.done @_setup_data
+
+		@span_durations = new DynamicValue (start, end) =>
+			@con.span_durations start: start, end: end
+			
 	
 	_setup_cursor: (data) =>
 		[lats, lons] = _.zip(data.coordinates...)
 		@cursor.accommodateAxisRange _.min(data.distances), _.max(data.distances)
 		@pos_to_coords = Trusas.coord_interp data.distances, lats, lons
 		@cursorpath = Trusas.rangepath data.distances, lats, lons
-
+		
 		$(@cursor).on "activeRangeChange", (e, rng) =>
-			p = @con.span_durations	start: rng[0], end: rng[1]
-			p.done (data) =>
-				@span_durations = data
-				$(@).trigger "spanDurationsChange", [data]
+			@span_durations.refresh rng[0], rng[1]
 	
 	_setup_data: (data) =>
 		for key of data
@@ -292,9 +294,9 @@ _setup = (stats_session) ->
 		$(el).bind "plothover", (event, pos, item) ->
 			ctrl.cursor.setHoverPosition pos.x
 	
-	plot_durations = ->
+	plot_durations = (durarr) ->
 		durations = []
-		for v in ctrl.span_durations
+		for v in durarr
 			continue if v != v
 			durations.push v
 		[binsize, binned] = histogram(durations, 15)
@@ -304,13 +306,9 @@ _setup = (stats_session) ->
 				barWidth: binsize
 			xaxis:
 				tickFormatter: format_seconds
+	ctrl.span_durations.$update.on plot_durations
 
-	ctrl.traces_promise.done ->
-		$(ctrl).on "spanDurationsChange", plot_durations
-		plot_durations()
-	
-	plot_dur_tod = ->
-		durarr = ctrl.span_durations
+	plot_dur_tod = (durarr) ->
 		durations = []
 		for i in [0...durarr.length]
 			date = new Date ctrl.departures[i].departure_time
@@ -334,10 +332,7 @@ _setup = (stats_session) ->
 					"#{hours}:#{minutes}"
 			yaxis:
 				tickFormatter: format_seconds
-
-	ctrl.traces_promise.done ->
-		$(ctrl).on "spanDurationsChange", plot_dur_tod
-		plot_dur_tod()
+	ctrl.span_durations.$update.on plot_dur_tod
 
 $ ->
 	query = $.deparam(window.location.search[1..])
