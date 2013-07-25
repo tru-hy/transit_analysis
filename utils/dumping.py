@@ -1,4 +1,5 @@
 import sys
+import functools
 
 def csvmapper(field):
 	if field is None:
@@ -11,6 +12,15 @@ def csvmapper(field):
 		return '{'+','.join(map(csvmapper, field)) + '}'
 	
 	return unicode(field).encode("utf-8")
+
+def csv_dump(func):
+	@functools.wraps(func)
+	def dumper(*args, **kwargs):
+		itr = func(*args, **kwargs)
+		for record in itr:
+			print("\t".join(map(csvmapper, record)))
+	dumper.func_name += "_csv"
+	return dumper
 
 
 class TraceTracker:

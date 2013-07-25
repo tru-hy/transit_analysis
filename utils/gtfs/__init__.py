@@ -73,7 +73,6 @@ class StopTimes(object):
 		raise KeyError
 
 def gtfs_departures(path, stop_times, timezone):
-	# TODO! Fix timezoning! (Seems to imply GMT at the moment)
 	weekday_fields = dict(
 		monday=rrule.MO,
 		tuesday=rrule.TU,
@@ -135,7 +134,7 @@ def gtfs_departures(path, stop_times, timezone):
 		assert stop_times[row.trip_id][0].stop_sequence == '1'
 		h, m, s = map(int, time.split(':'))
 		# TODO, FIXME! Breaks on DST-change-days!
-		# TODO, FIXME! Timezone!
+		attr = {"gtfs_"+k: v for k, v in row._asdict().items()}
 		time = datetime.timedelta(hours=h, minutes=m, seconds=s)
 		for datestr in dates:
 			date = datetime.datetime.strptime(datestr, "%Y%m%d")

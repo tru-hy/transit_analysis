@@ -4,14 +4,14 @@ from sqlalchemy.dialects.postgresql import HSTORE, ARRAY
 
 metadata = MetaData()
 
-trace = Table("coordinate_trace", metadata,
+Table("coordinate_trace", metadata,
 	Column('id', String(255), primary_key=True),
 	Column('source', String(255)),
 	Column('start_time', DateTime),
 	Column('end_time', DateTime)
 	)
 
-routed_trace = Table("routed_trace", metadata,
+Table("routed_trace", metadata,
 	Column('id', Integer, Sequence("routed_trace_id_seq"),
 		primary_key=True),
 	Column('reference_time', DateTime),
@@ -23,7 +23,7 @@ routed_trace = Table("routed_trace", metadata,
 	Column('distance_bin_width', Float)
 	)
 
-measurement = Table("coordinate_measurement", metadata,
+Table("coordinate_measurement", metadata,
 	Column('source', String(255), index=True),
 	Column('time', DateTime, index=True),
 	Index('source_time_idx', 'source', 'time'),
@@ -34,7 +34,7 @@ measurement = Table("coordinate_measurement", metadata,
 	Column('velocity', Float),
 	)
 
-departure = Table("transit_departure", metadata,
+Table("transit_departure", metadata,
 	Column('departure_id', String(255), primary_key=True),
 	# TODO: The information here is quite HSL specific and
 	#	could be in another table
@@ -48,13 +48,41 @@ departure = Table("transit_departure", metadata,
 	Column('routed_trace', Integer,
 		ForeignKey("routed_trace.id"),
 		nullable=True),
-	Column('attributes', HSTORE)
+	Column('attributes', HSTORE),
+	Column('schedule_id', String(255))
 	)
 
-shape = Table("coordinate_shape", metadata,
+Table("transit_stop", metadata,
+	Column('stop_id', String(255), primary_key=True),
+	Column('stop_name', String(255)),
+	Column('latitude', String(255)),
+	Column('longitude', String(255))
+	)
+
+Table("transit_schedule_shape", metadata,
+	Column('schedule_id', String(255), primary_key=True),
+	Column('shape_id', String(255), primary_key=True),
+	)
+
+Table("transit_schedule_stop", metadata,
+	Column('schedule_id', String(255), primary_key=True),
+	Column('stop_id', String(255), primary_key=True),
+	Column('arrival', Float),
+	Column('departure', Float)
+	)
+
+
+Table("coordinate_shape", metadata,
 	Column('shape', String(255), primary_key=True),
 	Column('coordinates', ARRAY(Float, dimensions=2)),
 	Column('distances', ARRAY(Float))
+	)
+
+
+Table("transit_shape_stop", metadata,
+	Column('stop_id', String(255), primary_key=True),
+	Column('shape_id', String(255), primary_key=True),
+	Column('distance', Float),
 	)
 
 default_uri="postgres://transit:transit@/transit"
@@ -93,8 +121,6 @@ def drop_database(owner='transit', database='transit',
 	
 	conn.execute("drop database %s"%(database,))
 	conn.close()
-
-
 
 def initialize_schema(uri=default_uri):
 	metadata = connect(uri)

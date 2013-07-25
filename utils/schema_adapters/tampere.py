@@ -126,5 +126,5 @@ class GtfsDeparture:
 			route_variant=dep.route_id,
 			direction=dest_name,
 			shape=dep.shape_id,
-			departure_time=dep.departure_time)
-		#depid = get_departure_id(departure
+			departure_time=dep.departure_time,
+			schedule_id=dep.trip_id)

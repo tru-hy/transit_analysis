@@ -1,11 +1,23 @@
 import sys
 import os
+from itertools import chain, groupby
+from collections import defaultdict
+
 from transit_analysis.config import coordinate_projection
 from transit_analysis.utils.gtfs import *
-from transit_analysis.recordtypes import transit_departure
-from transit_analysis.utils.dumping import csvmapper
+from transit_analysis import recordtypes as rec
+from transit_analysis.utils.dumping import csvmapper, csv_dump
 
-def shapes_csv(gtfs_dir):
+def get_reader(gtfs_dir, f):
+	filepath = os.path.join(gtfs_dir, f)
+	return NamedTupleCsvReader(bomopen(os.path.join(gtfs_dir, f)))
+
+csv_commands = []
+def csv(func):
+	csv_commands.append(csv_dump(func))
+	return func
+@csv
+def coordinate_shape(gtfs_dir, **kwargs):
 	import numpy as np
 	import pyproj
 	proj = pyproj.Proj(init=coordinate_projection)
@@ -29,11 +41,85 @@ def shapes_csv(gtfs_dir):
 		projected = np.array(proj(lon, lat)).T
 		diffs = np.sqrt(np.sum(np.diff(projected, axis=0)**2, axis=1))
 		distances = [0.0] + list(np.cumsum(diffs))
-		print "\t".join(map(csvmapper, (shape_id, latlon, distances)))
+		yield rec.coordinate_shape(
+			shape=shape_id,
+			coordinates=coordinates,
+			distances=distances)
 
+@csv
+def transit_stop(gtfs_dir, **kwargs):
+	filepath = os.path.join(gtfs_dir, 'stops.txt')
+	for row in NamedTupleCsvReader(bomopen(filepath)):
+		yield rec.transit_stop(
+			stop_id=row.stop_id,
+			stop_name=row.stop_name,
+			latitude=row.stop_lat,
+			longitude=row.stop_lon)
 
+@csv
+def transit_schedule_shape(gtfs_dir, **kwargs):
+	trips = get_reader(gtfs_dir, 'trips.txt')
+	for t in trips:
+		yield rec.transit_schedule_shape(
+			schedule_id=t.trip_id,
+			shape_id=t.shape_id)
 
-def departures_csv(adapter, gtfs_dir):
+@csv
+def transit_schedule_stop(gtfs_dir, **kwargs):
+	rows = iter(get_reader(gtfs_dir, 'stop_times.txt'))
+	
+	def to_seconds(time):
+		h, m, s = time.split(':')
+		return int(h)*60*60 + int(m)*60 + int(s)
+	
+	trip = None
+	for row in rows:
+		if row.trip_id != trip:
+			assert row.stop_sequence == "1"
+			trip = row.trip_id
+			start_time = to_seconds(row.departure_time)
+		arrival = to_seconds(row.arrival_time) - start_time
+		departure = to_seconds(row.departure_time) - start_time
+		yield rec.transit_schedule_stop(
+			schedule_id=row.trip_id,
+			stop_id=row.stop_id,
+			arrival=arrival,
+			departure=departure)
+
+@csv
+def transit_shape_stop(gtfs_dir, **kwargs):
+	tripidx = get_reader(gtfs_dir, 'trips.txt')
+	tripidx = {t.trip_id: t for t in tripidx}
+	rows = iter(get_reader(gtfs_dir, 'stop_times.txt'))
+	sequences = {}
+	
+	trip = None
+	prev_stop = None
+	
+	for tid, trips in groupby(rows, lambda x: x.trip_id):
+		sid = tripidx[tid].shape_id
+		stops = [t.stop_id for t in trips]
+		if sid not in sequences:
+			sequences[sid] = stops
+			continue
+		if sequences[sid] == stops:
+			continue
+		print >>sys.stderr,\
+			"Different stop sequences for a shape,"\
+			"selecting longest"
+		if len(stops) > len(sequences[sid]):
+			sequences[sid] = stops
+	
+	for shape_id, seq in sequences.iteritems():
+		prev = None
+		for i, stop in enumerate(seq, 1):
+			yield rec.transit_shape_stop(
+				shape_id=shape_id,
+				stop_id=stop,
+				distance=-i)
+
+@csv
+def transit_departure(gtfs_dir, adapter, **kwargs):
 	import imp
 	adapter = imp.load_source("adapter", adapter)
 	timezone = adapter.timezone
@@ -42,7 +128,7 @@ def departures_csv(adapter, gtfs_dir):
 	hack = transit_departure('dummy')
 	trace_idx = hack._fields.index('trace')
 	seen_ids = {}
-
+	
 	for departure in departures:
 		record = handler(departure)
 		# Hacking as this can't be done as a default in
@@ -53,17 +139,15 @@ def departures_csv(adapter, gtfs_dir):
 			continue
 		seen_ids[depid] = True
 
-		record = list(handler(departure))
+		record = list(record)
 		if record[trace_idx] is None:
 			record[trace_idx] = "transit_departure/"+depid
-		record_str = "\t".join(map(csvmapper, record))
-		print record_str
-
-
+		record = transit_departure(*record)
+		yield rec.transit_departure(*record)
 
 if __name__ == '__main__':
 	import argh
         parser = argh.ArghParser()
-        parser.add_commands([departures_csv, shapes_csv])
+        parser.add_commands(csv_commands)
 	parser.dispatch()
 
