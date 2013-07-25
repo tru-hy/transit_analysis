@@ -106,6 +106,15 @@ def coordinate_shape(db, shape):
 def nocols(tbl, *exclude):
 	return [tbl.c[n] for (n) in tbl.c.keys() if n not in exclude]
 
+def get_shape_stops(db, shape):
+	shapestops = db.tables['transit_shape_stop']
+	stops = db.tables['transit_stop']
+	return sqa.select([shapestops.c.distance, stops]).\
+		where(shapestops.c.shape_id==shape).\
+		where(stops.c.stop_id==shapestops.c.stop_id).\
+		where(shapestops.c.distance >= 0).\
+		order_by(shapestops.c.distance).execute()
+
 def get_departure_traces(db, shape, route_variant=None, direction=None):
 	dep = db.tables['transit_departure']
 	tr = db.tables['routed_trace']
@@ -153,6 +162,8 @@ class ShapeSession:
 		self._timegrid = self._timegrid[:,1:]
 		maxdist = self._timegrid.shape[1]*self._binwidth
 		self._distgrid = np.arange(0, maxdist, self._binwidth)[:-1]
+
+		self._stops = list(get_shape_stops(db, kwargs['shape']))
 	
 	def _mymethods(self):
 		return {d: [] for d in dir(self) if not d.startswith('_')}
@@ -191,9 +202,8 @@ class ShapeSession:
 			out.append(obj)
 		return out
 			
-
-	def departure_keys(self):
-		return [r.departure_id for r in self._result]
+	def stops(self):
+		return [OrderedDict(row.items()) for row in self._stops]
 	
 	def distance_grid(self):
 		return self._distgrid
