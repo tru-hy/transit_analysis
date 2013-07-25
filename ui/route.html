@@ -75,11 +75,12 @@ class DataController
 			"resources/coordinate_shape.json?"+$.param(_.pick(query, 'shape'))
 
 		traces_query = "resources/departure_traces.json"+window.location.search
-		@traces_promise = @con.multiget
-			distance_grid: {}
-			time_spent_stats: {}
-			speed_stats: {}
-			departures: {}
+
+		@traces_promise = @con()
+			.distance_grid()
+			.time_spent_stats()
+			.speed_stats()
+			.departures()()
 		
 		@shape_promise.done @_setup_cursor
 		@traces_promise.done @_setup_data
@@ -91,8 +92,7 @@ class DataController
 		@cursorpath = Trusas.rangepath data.distances, lats, lons
 
 		$(@cursor).on "activeRangeChange", (e, rng) =>
-			p = @con.get "span_durations",
-				start: rng[0], end: rng[1]
+			p = @con.span_durations	start: rng[0], end: rng[1]
 			p.done (data) =>
 				@span_durations = data
 				$(@).trigger "spanDurationsChange", [data]
@@ -343,7 +343,7 @@ $ ->
 	query = $.deparam(window.location.search[1..])
 	$("#session-info").html(header_template(query))
 	
-	promise = TransitStatsSession query, _setup
+	promise = TransitStats.Connect query, _setup
 
 </script>
 <div id="session-info"></div>

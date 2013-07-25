@@ -149,13 +149,13 @@ class ShapeSession:
 			[r.time_at_distance_grid for r in self._result]
 			)
 		self._time_spent = np.diff(self._timegrid, axis=1)
-		self._speed = 1.0/self._time_spent
+		self._speed = 1.0/self._time_spent*self._binwidth*3.6
 		self._timegrid = self._timegrid[:,1:]
 		maxdist = self._timegrid.shape[1]*self._binwidth
 		self._distgrid = np.arange(0, maxdist, self._binwidth)[:-1]
 	
 	def _mymethods(self):
-		return [d for d in dir(self) if not d.startswith('_')]
+		return {d: [] for d in dir(self) if not d.startswith('_')}
 	
 	def __call__(self, *path, **kwargs):
 		return serialize.result(self._handle(*path, **kwargs))
@@ -258,8 +258,10 @@ class RouteStatisticsProvider:
 		session_key = "&".join(("%s=%s"%(k, v) for k, v in kwargs.items()))
 		if session_key not in self.sessions:
 			self.sessions[session_key] = ShapeSession(self.db, **kwargs)
-
-		return serialize.result({'session_key': session_key})
+		
+		result = self.sessions[session_key]._handle()
+		result['session_key'] = session_key
+		return serialize.result(result)
 	
 		
 	
