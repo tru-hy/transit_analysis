@@ -72,25 +72,30 @@ class DataController
 		@cursor = new TrusasCursor()
 
 		query = $.deparam(window.location.search[1..])
-		@shape_promise = $.getJSON \
+		shape_promise = $.getJSON \
 			"resources/coordinate_shape.json?"+$.param(_.pick(query, 'shape'))
 
 		traces_query = "resources/departure_traces.json"+window.location.search
 
-		@traces_promise = @con()
+		traces_promise = @con()
 			.distance_grid()
 			.time_spent_stats()
 			.speed_stats()
 			.departures()()
 		
-		@shape_promise.done @_setup_cursor
-		@traces_promise.done @_setup_data
+		shape_promise.done @_setup_cursor
+		traces_promise.done @_setup_data
 
 		@span_durations = new DynamicValue (start, end) =>
 			@con.span_durations start: start, end: end
-			
+		
+		@ready = $.Deferred()
+		
+		promises = $.when shape_promise, traces_promise
+		promises.done => @ready.resolve @
 	
 	_setup_cursor: (data) =>
+		@route = data
 		[lats, lons] = _.zip(data.coordinates...)
 		@cursor.accommodateAxisRange _.min(data.distances), _.max(data.distances)
 		@pos_to_coords = Trusas.coord_interp data.distances, lats, lons
@@ -135,40 +140,39 @@ header_template = _.template """
 	"""
 
 
-_setup = (stats_session) ->
-	ctrl = new DataController(stats_session)
+_setup = (ctrl) ->
+	$(ctrl.cursor).on "activeRangeChange", (e, rng) ->
+		hash = "#{Math.round(rng[0])}:#{Math.round(rng[1])}"
+		window.location.replace(('' + window.location).split('#')[0] + '#' + hash)
+
+	hash = window.location.hash[1..]
+	if hash == ''
+		return
+	rng = (parseFloat p for p in hash.split ':')
+	ctrl.cursor.setActiveRange rng
 	
-	ctrl.shape_promise.done (data) ->
-		$(ctrl.cursor).on "activeRangeChange", (e, rng) ->
-			hash = "#{Math.round(rng[0])}:#{Math.round(rng[1])}"
-			window.location.replace(('' + window.location).split('#')[0] + '#' + hash)
+	_setup_map ctrl
+	_setup_plots ctrl
 
-		hash = window.location.hash[1..]
-		if hash == ''
-			return
-		rng = (parseFloat p for p in hash.split ':')
-		ctrl.cursor.setActiveRange rng
+_setup_map = (ctrl) ->
+	route_map = new Trusas.Map $("#route-map")[0]
+	route_map.add_route "default", ctrl.route.coordinates
 
-	ctrl.shape_promise.done (data) ->
-		route_map = new Trusas.Map $("#route-map")[0]
-		route_map.add_route "default", data.coordinates
+	extent_setup = (rng) ->
+		subpath = ctrl.cursorpath rng...
+		extent = Trusas.coords_extent subpath
+		route_map.set_extent extent
+	
+	$(ctrl.cursor).on "activeRangeChange", (e, rng) -> extent_setup rng
+	# TODO: For some reason this fails if done too early,
+	# so a hack.
+	setTimeout (-> extent_setup ctrl.cursor.getActiveRange()), 100
 
-		
-		extent_setup = (rng) ->
-			subpath = ctrl.cursorpath rng...
-			extent = Trusas.coords_extent subpath
-			route_map.set_extent extent
-		
-		$(ctrl.cursor).on "activeRangeChange", (e, rng) -> extent_setup rng
-		# TODO: For some reason this fails if done too early,
-		# so a hack.
-		setTimeout (-> extent_setup ctrl.cursor.getActiveRange()), 100
-
-		$(ctrl.cursor).on "hoverPositionChange", (e, pos) ->
-			coords = ctrl.pos_to_coords pos
-			if not coords[0]?
-				coords = undefined
-			route_map.set_hover coords
+	$(ctrl.cursor).on "hoverPositionChange", (e, pos) ->
+		coords = ctrl.pos_to_coords pos
+		if not coords[0]?
+			coords = undefined
+		route_map.set_hover coords
 
 
 	###
@@ -220,79 +224,79 @@ _setup = (stats_session) ->
 		
 
 	###
-	ctrl.traces_promise.done ->
-		stats = ctrl.speed_stats
 
-		
-		items = []
+_setup_plots = (ctrl) ->
+	stats = ctrl.speed_stats
 
-		color = "black"
-		items.push
-			data: _.zip(ctrl.distance_grid, stats.median)
-			color: color
-		
-		items.push
-			data: _.zip(ctrl.distance_grid, stats.lowp)
-			id: 'lowp'
-			shadowSize: 0
-			lines: show: true, fill: false, lineWidth: 0
-			color: color
-		
-		items.push
-			data: _.zip(ctrl.distance_grid, stats.highp)
-			shadowSize: 0
-			fillBetween: 'lowp'
-			lineWidth: 0
-			color: color
-			lines: show: true, fill: 0.3, lineWidth: 0
-		
-		items.push
-			data: _.zip(ctrl.distance_grid, stats.lowq)
-			id: 'lowq'
-			shadowSize: 0
-			color: color
-			lines: show: true, fill: false, lineWidth: 0
-		
-		items.push
-			data: _.zip(ctrl.distance_grid, stats.highq)
-			shadowSize: 0
-			fillBetween: 'lowq'
-			lineWidth: 0
-			color: color
-			lines: show: true, fill: 0.3, lineWidth: 0
-		
-		timeticks = [0, 1, 5, 10, 20, 30, 60, 120, 300, 600]
-		el = $("#route-speed")
-		plot = $.plot el, items,
-			zoom: interactive: true
-			pan: interactive: true
-			yaxis:
-				panRange: false
-				zoomRange: false
-				#min: 0.0
-				#ticks: timeticks
-				#tickFormatter: format_seconds
-				#max: 120
-				#transform: (x) -> Math.log(x+1)
-			xaxis:
-				panRange: ctrl.cursor.getAxisRange()
-				zoomRange: ctrl.cursor.getAxisRange()
-				min: ctrl.cursor.getActiveRange()[0]
-				max: ctrl.cursor.getActiveRange()[1]
-			grid: hoverable: true
-			crosshair: mode: 'x'
+	items = []
 
-		update_cursor = ->
-			axes = plot.getAxes()
-			start = axes.xaxis.min
-			end = axes.xaxis.max
-			ctrl.cursor.setActiveRange([start, end])
-		
-		$(el).bind "plotzoom", update_cursor
-		$(el).bind "plotpan", update_cursor
+	color = "black"
+	items.push
+		data: _.zip(ctrl.distance_grid, stats.median)
+		color: color
+	
+	items.push
+		data: _.zip(ctrl.distance_grid, stats.lowp)
+		id: 'lowp'
+		shadowSize: 0
+		lines: show: true, fill: false, lineWidth: 0
+		color: color
+	
+	items.push
+		data: _.zip(ctrl.distance_grid, stats.highp)
+		shadowSize: 0
+		fillBetween: 'lowp'
+		lineWidth: 0
+		color: color
+		lines: show: true, fill: 0.3, lineWidth: 0
+	
+	items.push
+		data: _.zip(ctrl.distance_grid, stats.lowq)
+		id: 'lowq'
+		shadowSize: 0
+		color: color
+		lines: show: true, fill: false, lineWidth: 0
+	
+	items.push
+		data: _.zip(ctrl.distance_grid, stats.highq)
+		shadowSize: 0
+		fillBetween: 'lowq'
+		lineWidth: 0
+		color: color
+		lines: show: true, fill: 0.3, lineWidth: 0
+	
+	timeticks = [0, 1, 5, 10, 20, 30, 60, 120, 300, 600]
+	el = $("#route-speed")
+	plot = $.plot el, items,
+		zoom: interactive: true
+		pan: interactive: true
+		yaxis:
+			panRange: false
+			zoomRange: false
+			#min: 0.0
+			#ticks: timeticks
+			#tickFormatter: format_seconds
+			#max: 120
+			#transform: (x) -> Math.log(x+1)
+		xaxis:
+			panRange: ctrl.cursor.getAxisRange()
+			zoomRange: ctrl.cursor.getAxisRange()
+			min: ctrl.cursor.getActiveRange()[0]
+			max: ctrl.cursor.getActiveRange()[1]
+		grid: hoverable: true
+		crosshair: mode: 'x'
 
-		$(el).bind "plothover", (event, pos, item) ->
-			ctrl.cursor.setHoverPosition pos.x
+	update_cursor = ->
+		axes = plot.getAxes()
+		start = axes.xaxis.min
+		end = axes.xaxis.max
+		ctrl.cursor.setActiveRange([start, end])
+	
+	$(el).bind "plotzoom", update_cursor
+	$(el).bind "plotpan", update_cursor
+
+	$(el).bind "plothover", (event, pos, item) ->
+		ctrl.cursor.setHoverPosition pos.x
 	
 	plot_durations = (durarr) ->
 		durations = []
@@ -338,7 +342,10 @@ $ ->
 	query = $.deparam(window.location.search[1..])
 	$("#session-info").html(header_template(query))
 	
-	promise = TransitStats.Connect query, _setup
+	promise = TransitStats.Connect query
+	promise.done (con) ->
+		ctrl = new DataController(con)
+		ctrl.ready.done _setup
 
 </script>
 <div id="session-info"></div>
