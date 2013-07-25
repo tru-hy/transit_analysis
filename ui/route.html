@@ -146,10 +146,9 @@ _setup = (ctrl) ->
 		window.location.replace(('' + window.location).split('#')[0] + '#' + hash)
 
 	hash = window.location.hash[1..]
-	if hash == ''
-		return
-	rng = (parseFloat p for p in hash.split ':')
-	ctrl.cursor.setActiveRange rng
+	if hash != ''
+		rng = (parseFloat p for p in hash.split ':')
+		ctrl.cursor.setActiveRange rng
 	
 	_setup_map ctrl
 	_setup_plots ctrl
