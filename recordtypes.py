@@ -1,4 +1,5 @@
 from collections import namedtuple
+import schema
 
 def defaultnamedtuple(name, fields, *args, **kwargs):
 	names = []
@@ -18,42 +19,12 @@ def defaultnamedtuple(name, fields, *args, **kwargs):
 	construct._fields = names
 	return construct
 
-transit_departure = defaultnamedtuple("transit_departure", (
-	'departure_id',
-	('route_name', None),
-	('route_variant', None),
-	('direction', None),
-	('departure_time', None),
-	('shape', None),
-	('trace', None),
-	('routed_trace', None),
-	('attributes', None)
-	))
+for name, table in schema.metadata.tables.items():
+	fields = []
+	for cname, c in table.c.items():
+		# TODO: Figure out if it's mandatory
+		fields.append((cname, None))
+	recordtype = defaultnamedtuple(name, fields)
+	locals()[name] = recordtype
 
-coordinate_measurement = defaultnamedtuple("coordinate_measurement", (
-	'source',
-	'time',
-	'latitude',
-	'longitude',
-	('altitude', None),
-	('bearing', None),
-	('velocity', None)
-	))
 
-coordinate_trace = defaultnamedtuple("coordinate_trace", (
-	'id',
-	'source',
-	'start_time',
-	'end_time'
-	))
-
-routed_trace = defaultnamedtuple("routed_trace", (
-	('id', None),
-	'reference_time',
-	'shape',
-	'timestamp',
-	'route_distance',
-	'route_speed',
-	'time_at_distance_grid',
-	'distance_bin_width'
-	))
