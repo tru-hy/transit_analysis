@@ -107,13 +107,20 @@ def nocols(tbl, *exclude):
 	return [tbl.c[n] for (n) in tbl.c.keys() if n not in exclude]
 
 def get_shape_stops(db, shape):
-	shapestops = db.tables['transit_shape_stop']
-	stops = db.tables['transit_stop']
-	return sqa.select([shapestops.c.distance, stops]).\
-		where(shapestops.c.shape_id==shape).\
-		where(stops.c.stop_id==shapestops.c.stop_id).\
-		where(shapestops.c.distance >= 0).\
-		order_by(shapestops.c.distance).execute()
+	q = """
+	with ss as (
+	select
+	 unnest(stop_ids) as stop_id,
+	 unnest(distances) as distance
+	from transit_shape_stop
+	where shape_id=%(shape)s
+	)
+	select ss.*, stop_name, latitude, longitude
+	from ss
+	join transit_stop as s on s.stop_id=ss.stop_id
+	order by distance
+	"""
+	return db.bind.execute(q, shape=shape)
 
 def get_departure_traces(db, shape, route_variant=None, direction=None):
 	dep = db.tables['transit_departure']
@@ -162,8 +169,9 @@ class ShapeSession:
 		self._timegrid = self._timegrid[:,1:]
 		maxdist = self._timegrid.shape[1]*self._binwidth
 		self._distgrid = np.arange(0, maxdist, self._binwidth)[:-1]
-
+		
 		self._stops = list(get_shape_stops(db, kwargs['shape']))
+
 	
 	def _mymethods(self):
 		return {d: [] for d in dir(self) if not d.startswith('_')}

@@ -1,7 +1,7 @@
 from sqlalchemy import *
 from sqlalchemy.dialects.postgresql import HSTORE, ARRAY
 
-
+from transit_analysis import config
 metadata = MetaData()
 
 Table("coordinate_trace", metadata,
@@ -55,8 +55,8 @@ Table("transit_departure", metadata,
 Table("transit_stop", metadata,
 	Column('stop_id', String(255), primary_key=True),
 	Column('stop_name', String(255)),
-	Column('latitude', String(255)),
-	Column('longitude', String(255))
+	Column('latitude', Float),
+	Column('longitude', Float)
 	)
 
 Table("transit_schedule_shape", metadata,
@@ -80,12 +80,13 @@ Table("coordinate_shape", metadata,
 
 
 Table("transit_shape_stop", metadata,
-	Column('stop_id', String(255), primary_key=True),
 	Column('shape_id', String(255), primary_key=True),
-	Column('distance', Float),
+	Column('distances', ARRAY(Float)),
+	Column('stop_ids', ARRAY(String(255))),
+	Column('sequence', ARRAY(Integer)),
 	)
 
-default_uri="postgres://transit:transit@/transit"
+default_uri=config.db_connection_uri
 
 def connect(uri=default_uri):
 	engine = create_engine(uri)

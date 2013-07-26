@@ -112,11 +112,10 @@ def transit_shape_stop(gtfs_dir, **kwargs):
 	
 	for shape_id, seq in sequences.iteritems():
 		prev = None
-		for i, stop in enumerate(seq, 1):
-			yield rec.transit_shape_stop(
-				shape_id=shape_id,
-				stop_id=stop,
-				distance=-i)
+		yield rec.transit_shape_stop(
+			shape_id=shape_id,
+			stop_ids=seq,
+			sequence=range(len(seq)))
 
 @csv
 def transit_departure(gtfs_dir, adapter, **kwargs):
@@ -125,8 +124,7 @@ def transit_departure(gtfs_dir, adapter, **kwargs):
 	timezone = adapter.timezone
 	departures = GtfsDepartures(gtfs_dir, timezone)
 	handler = adapter.GtfsDeparture(departures)
-	hack = transit_departure('dummy')
-	trace_idx = hack._fields.index('trace')
+	trace_idx = rec.transit_departure._fields.index('trace')
 	seen_ids = {}
 	
 	for departure in departures:

@@ -202,10 +202,55 @@ def plot_route_filtering(uri=schema.default_uri, shape=None, override=True):
 	for shape in shapes:
 		plot_shape_route_filtering(db, shape, override)
 
+def filter_stop_sequences(uri=schema.default_uri):
+	db = schema.connect(uri)
+	con = db.bind
+
+	q = """
+	select shape, coordinates
+	from coordinate_shape
+	where shape in
+	(select distinct shape_id from transit_shape_stop)
+	"""
+	shapes = con.execute(q)
+	for shape in shapes:
+		filter_shape_stop_sequences(db, shape)
+	
+def filter_shape_stop_sequences(db, shape):
+	q = """
+	with ss as (
+	select
+	 unnest(stop_ids) as stop_id,
+	 unnest(sequence) as sequence
+	from transit_shape_stop
+	where shape_id=%(shape)s
+	)
+	select ss.*, latitude, longitude
+	from ss
+	join transit_stop as s on s.stop_id=ss.stop_id
+	order by sequence
+	"""
+	# This stuff shouldn't be this damn hard!
+	res = db.bind.execute(q, shape=shape.shape)
+	data = zip(*res.fetchall())
+	data = dict(zip(res.keys(), data))
+
+	sx, sy = coord_proj(*zip(*shape.coordinates)[::-1])
+	matcher = RouteMatcher2d(zip(sx, sy))
+
+	x, y = coord_proj(data['longitude'], data['latitude'])
+
+	seq, distances = matcher(np.array(data['sequence'], dtype=float), zip(x, y))
+	
+	tbl = db.tables['transit_shape_stop']
+	tbl.update().values(distances=distances).where(tbl.c.shape_id==shape.shape).execute()
+		
+	
+
 
 if __name__ == '__main__':
 	import argh
         parser = argh.ArghParser()
-        parser.add_commands([filter_routes, plot_route_filtering])
+        parser.add_commands([filter_routes, plot_route_filtering, filter_stop_sequences])
         parser.dispatch()
 
