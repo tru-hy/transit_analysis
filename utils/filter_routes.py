@@ -248,22 +248,6 @@ def filter_shape_stop_sequences(db, shape):
 
 	seq, distances = matcher(np.array(data['sequence'], dtype=float), zip(x, y))
 
-	"""
-	import matplotlib.pyplot as plt
-	dist_to_coords = scipy.interpolate.interp1d(
-		matcher.distances, np.vstack((sx, sy)).T, axis=0)
-	plt.plot(sx, sy)
-	fitx, fity = dist_to_coords(distances).T
-	#plt.plot(x, y, 'o')
-	#plt.plot(fitx, fity, 'o')
-	for i in range(len(x)):
-		plt.plot([x[i], fitx[i]], [y[i], fity[i]], '-o')
-	#plt.plot(zip(x, fitx), zip(y, fity), 'o-')
-
-	plt.show()
-	return
-	"""
-
 	tbl = db.tables['transit_shape_stop']
 	tbl.update().values(distances=distances).where(tbl.c.shape_id==shape.shape).execute()
 		
