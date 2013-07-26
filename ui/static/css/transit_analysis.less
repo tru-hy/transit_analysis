@@ -38,3 +38,34 @@ body {
 	width: 100%;
 	height: 100%;
 }
+
+#route-seq {
+	margin-bottom: 10px;
+
+	.axis path,
+	.axis line {
+		fill: none;
+	  	stroke: #000;
+		shape-rendering: crispEdges;
+	}
+
+	.bar {
+		fill: white;
+		opacity: 0.5;
+	}
+	
+	.bin {
+		cursor: pointer;
+	}
+	.bin:hover .bar {
+		opacity: 0.9;	
+	}
+
+	.binc {
+		opacity: 0;
+	}
+
+	.x.axis path {
+  	display: none;
+}
+}

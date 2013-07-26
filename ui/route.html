@@ -8,7 +8,7 @@
 <script type="text/coffeescript" src="static/js/transit_analysis.coffee"></script>
 
 <script type="text/javascript" src="static/js/Cesium/Cesium.js"></script>
-<link rel="stylesheet" href="static/css/transit_analysis.css" type="text/css" src="static/js/Cesium/Widgets/CesiumWidget/CesiumWidget.css" />
+<link rel="stylesheet" type="text/css" src="static/js/Cesium/Widgets/CesiumWidget/CesiumWidget.css" />
 
 <script type="text/coffeescript" src="static/js/trusas.map.coffee"></script>
 
@@ -17,6 +17,8 @@
 <script type="text/javascript" src="/static/js/jquery.flot.navigate.js"></script>
 <script type="text/javascript" src="/static/js/jquery.flot.fillbetween.js"></script>
 
+<script type="text/javascript" src="/static/js/d3.v3.js"></script>
+
 <script type="text/javascript" src="/static/js/science.v1.js"></script>
 
 <!--<script type="text/javascript" src="static/js/envision.min.js"></script>
@@ -24,8 +26,9 @@
 
 <script type="text/javascript" src="static/js/underscore.js"></script>
 
-<link rel="stylesheet" href="static/css/transit_analysis.css" type="text/css"/>
+<link rel="stylesheet/less" href="static/css/transit_analysis.less" type="text/css"/>
 
+<script type="text/javascript" src="static/js/less-1.4.1.js"></script>
 
 <script type="text/coffeescript">
 
@@ -86,7 +89,10 @@ class DataController
 			.distance_grid()
 			.time_spent_stats()
 			.speed_stats()
-			.departures()()
+			.departures()
+			.stops()
+			.stop_duration_stats()
+			.inter_stop_duration_stats()()
 		
 		shape_promise.done @_setup_cursor
 		traces_promise.done @_setup_data
@@ -155,28 +161,32 @@ _setup = (ctrl) ->
 		rng = (parseFloat p for p in hash.split ':')
 		ctrl.cursor.setActiveRange rng
 	
+	_setup_seq_plot ctrl
 	_setup_map ctrl
 	_setup_plots ctrl
 
 _setup_map = (ctrl) ->
-	route_map = new Trusas.Map $("#route-map")[0]
-	route_map.add_route "default", ctrl.route.coordinates
+	Trusas.Map.Create($("#route-map")[0]).done (route_map) ->
+		route_map.add_route ctrl.route.coordinates
 
-	extent_setup = (rng) ->
-		subpath = ctrl.cursorpath rng...
-		extent = Trusas.coords_extent subpath
-		route_map.set_extent extent
-	
-	$(ctrl.cursor).on "activeRangeChange", (e, rng) -> extent_setup rng
-	# TODO: For some reason this fails if done too early,
-	# so a hack.
-	setTimeout (-> extent_setup ctrl.cursor.getActiveRange()), 100
+		for stop in ctrl.stops
+			route_map.add_marker [stop.latitude, stop.longitude]
 
-	$(ctrl.cursor).on "hoverPositionChange", (e, pos) ->
-		coords = ctrl.pos_to_coords pos
-		if not coords[0]?
-			coords = undefined
-		route_map.set_hover coords
+		extent_setup = (rng) ->
+			subpath = ctrl.cursorpath rng...
+			extent = Trusas.coords_extent subpath
+			route_map.set_extent extent
+		
+		$(ctrl.cursor).on "activeRangeChange", (e, rng) -> extent_setup rng
+		# TODO: For some reason this fails if done too early,
+		# so a hack.
+		setTimeout (-> extent_setup ctrl.cursor.getActiveRange()), 100
+
+		$(ctrl.cursor).on "hoverPositionChange", (e, pos) ->
+			coords = ctrl.pos_to_coords pos
+			if not coords[0]?
+				coords = undefined
+			route_map.set_hover coords
 
 
 _setup_plots = (ctrl) ->
@@ -292,6 +302,106 @@ _setup_plots = (ctrl) ->
 				tickFormatter: format_seconds
 	ctrl.span_durations.$update.on plot_dur_tod
 
+_setup_seq_plot = (ctrl) ->
+	plot = new StopSeqPlot "#route-seq", ctrl
+
+class StopSeqPlot
+	constructor: (@el, ctrl) ->
+		$el = $(@el)
+		el = d3.select(@el)
+
+		stops = ctrl.stops
+		
+		width = $el.width()
+		height = $el.height()
+		svg = d3.select(@el).append("svg")
+		nonan = (x) -> return x if x == x; return 0
+
+		stats = ctrl.stop_duration_stats
+		x = d3.scale.ordinal()
+			.rangeRoundBands([0, width], 0.1)
+			.domain(s.stop_id for s in stops)
+
+		maxvalid = Math.max (v for v in stats.median when v == v)...
+		y = d3.scale.linear()
+			.range([height, 0])
+			.domain([0, maxvalid])
+		
+		stat = (d) -> y nonan stats.median[d.index]
+
+		top = svg.append("g")
+		.attr('class', 'topbin')
+		.attr('transform', 'scale(1.0, 0.5)')
+		
+		data = top.selectAll(".bin").data(stops)
+
+		bins = data.enter().append('g')
+		.attr('class', 'bin')
+		.attr('transform', (d) -> "translate(#{x d.stop_id} , 0)")
+
+		binc = bins.append('rect')
+		.attr('class', 'binc')
+		.attr('height', height)
+		.attr('width', x.rangeBand())
+
+		bars = bins.append('rect')
+		.attr('class', 'bar')
+		.attr('y', stat)
+		.attr('width', x.rangeBand())
+		.attr('height', (d) -> height - stat(d))
+
+		bins.on "click", (d) ->
+			ctrl.cursor.setActiveRange [d.distance-50, d.distance+50]
+		
+		# BOTTOM
+		
+		stats = ctrl.inter_stop_duration_stats
+		#x = d3.scale.ordinal()
+		#	.rangeRoundBands([0, width], 0.1)
+		#	.domain(s.stop_id for s in stops)
+
+		gaps = ([stops[i], stops[i+1]] for i in [0...stops.length-1])
+		invspeed = (d) ->
+			stats.median[d[0].index]/(d[1].distance - d[0].distance)
+
+			
+		maxvalid = Math.max (invspeed(d) for d in gaps)...
+		y = d3.scale.linear()
+			.range([0, height])
+			.domain([0, maxvalid])
+		
+		stat = (d) ->
+			s = y nonan invspeed d
+			return s
+
+		
+
+		bottom = svg.append("g")
+		.attr('class', 'bottombin')
+		.attr('transform', "scale(1.0, 0.5) translate(#{x.rangeBand()/2.0}, #{height+10})")
+		
+		data = bottom.selectAll(".bin").data(gaps)
+
+		bins = data.enter().append('g')
+		.attr('class', 'bin')
+		.attr('transform', (d) -> "translate(#{x d[0].stop_id} , 0)")
+
+		binc = bins.append('rect')
+		.attr('class', 'binc')
+		.attr('height', height)
+		.attr('width', x.rangeBand())
+
+		bars = bins.append('rect')
+		.attr('class', 'bar')
+		.attr('y', 0)
+		.attr('width', x.rangeBand())
+		.attr('height', (d) -> stat(d))
+
+		bins.on "click", (d) ->
+			ctrl.cursor.setActiveRange [d[0].distance+50, d[1].distance-50]
+
+
+		
 $ ->
 	query = $.deparam(window.location.search[1..])
 	$("#session-info").html(header_template(query))
@@ -303,7 +413,8 @@ $ ->
 
 </script>
 <div id="session-info"></div>
-<div class="widget-container">
+<div id="route-seq" style="width: 100%; height: 100px; clear: both;"></div>
+<div class="widget-container" style="width: 100%">
 <div id="route-map" style="width: 600px; height: 600px; float: left;"></div>
 <div id="route-speed" style="width: 49%; height: 200px; float: left;"></div>
 <div id="route-duration" style="width: 49%; min-height: 200px; float: left;"></div>

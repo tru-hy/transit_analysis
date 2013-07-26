@@ -158,6 +158,8 @@ def axispercentile(values, percentiles):
 
 class ShapeSession:
 	def __init__(self, db, **kwargs):
+		self.stop_span = 100.0
+
 		self._query = kwargs
 		self._result = list(get_departure_traces(db, **kwargs))
 		self._binwidth = self._result[0].distance_bin_width
@@ -174,7 +176,10 @@ class ShapeSession:
 
 	
 	def _mymethods(self):
-		return {d: [] for d in dir(self) if not d.startswith('_')}
+		def ismethod(d):
+			return (not d.startswith('_')
+				and callable(getattr(self, d)))
+		return {d: [] for d in dir(self) if ismethod(d)}
 	
 	def __call__(self, *path, **kwargs):
 		return serialize.result(self._handle(*path, **kwargs))
@@ -211,7 +216,13 @@ class ShapeSession:
 		return out
 			
 	def stops(self):
-		return [OrderedDict(row.items()) for row in self._stops]
+		def addindex(rows):
+			for i, row in enumerate(rows):
+				row = OrderedDict(row.items())
+				row['index'] = i
+				yield row
+
+		return list(addindex(self._stops))
 	
 	def distance_grid(self):
 		return self._distgrid
@@ -235,8 +246,27 @@ class ShapeSession:
 			('highp', 0.95))
 		results = axispercentile(self._speed, zip(*percs)[1])
 		return {percs[i][0]: results[i] for i in range(len(percs))}
-
 	
+	def stop_duration_stats(self):
+		stats=dict(median=[])
+		for stop in self._stops:
+			dist = stop.distance
+			s = dist - self.stop_span/2.0
+			e = dist + self.stop_span/2.0
+			stats['median'].append(np.median(self.span_durations(s, e)))
+		result = {k: np.array(v) for k, v in stats.iteritems()}
+		return result
+	
+	def inter_stop_duration_stats(self):
+		stats=dict(median=[])
+		for i in range(len(self._stops)-1):
+			s = self._stops[i].distance + self.stop_span/2.0
+			e = self._stops[i+1].distance - self.stop_span/2.0
+			stats['median'].append(np.median(self.span_durations(s, e)))
+		result = {k: np.array(v) for k, v in stats.iteritems()}
+		return result
+
+
 	def distance_bin(self, distance):
 		return min(max(0, int(distance/self._binwidth)),
 			len(self._distgrid) - 1)
