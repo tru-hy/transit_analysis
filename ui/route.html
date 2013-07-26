@@ -28,11 +28,16 @@
 
 
 <script type="text/coffeescript">
-histogram = (values, bins) ->
+
+double_freedman_fiaconis_binw = (values) ->
+	science.stats.iqr(values)/Math.pow(values.length, 1/3)
+	
+
+histogram = (values, binw=double_freedman_fiaconis_binw) ->
 		min = Math.min values...
 		max = Math.max values...
-		step = (max - min)/bins
 		values = _.sortBy values, (x) -> x
+		step = binw values
 		
 		hist = [[min+step, 0]]
 		currow = hist[0]
@@ -174,56 +179,6 @@ _setup_map = (ctrl) ->
 		route_map.set_hover coords
 
 
-	###
-	traces_promise.done (data) ->
-		series = []
-		for d in data
-			s =
-				data: [d.route_distance, d.route_speed]
-				color: "rgba(0,0,0,0.1)"
-
-			series.push s
-		
-		opts =
-			container: $("#route-speed")[0],
-			data:
-				detail: series,
-				summary: series
-			defaults:
-				detail: config:
-					yaxis: showLabels: true
-				summary: config:
-					xaxis: showLabels: true
-
-
-		series = new envision.templates.TimeSeries opts
-		return
-
-		vis = new envision.Visualization()
-		graph = new envision.Component
-			name: "speeds"
-			config:
-				'lite-lines':
-					lineWidth: 1
-					show: true
-				selection:
-					mode: "x"
-				xaxis: showLabels: true
-			data: series
-			height: "100%"
-		
-		vis
-			.add(graph)
-			.render $("#route-speed")[0]
-
-		interact = new envision.Interaction()
-		interact
-			.group([graph])
-			.add(envision.actions.zoom, {})
-		
-
-	###
-
 _setup_plots = (ctrl) ->
 	stats = ctrl.speed_stats
 
@@ -302,7 +257,7 @@ _setup_plots = (ctrl) ->
 		for v in durarr
 			continue if v != v
 			durations.push v
-		[binsize, binned] = histogram(durations, 15)
+		[binsize, binned] = histogram(durations)
 		$.plot $("#route-duration"), [{data: binned, color: "black"}],
 			bars:
 				show: true
