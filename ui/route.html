@@ -316,12 +316,13 @@ class StopSeqPlot
 		height = $el.height()
 		svg = d3.select(@el).append("svg")
 		nonan = (x) -> return x if x == x; return 0
+		barmargin = 3
 
 		stats = ctrl.stop_duration_stats
 		x = d3.scale.ordinal()
-			.rangeRoundBands([0, width], 0.1)
+			.rangeRoundBands([0, width], 0.0)
 			.domain(s.stop_id for s in stops)
-
+		
 		maxvalid = Math.max (v for v in stats.median when v == v)...
 		y = d3.scale.linear()
 			.range([height, 0])
@@ -342,12 +343,12 @@ class StopSeqPlot
 		binc = bins.append('rect')
 		.attr('class', 'binc')
 		.attr('height', height)
-		.attr('width', x.rangeBand())
+		.attr('width', x.rangeBand()-barmargin)
 
 		bars = bins.append('rect')
 		.attr('class', 'bar')
 		.attr('y', stat)
-		.attr('width', x.rangeBand())
+		.attr('width', x.rangeBand()-barmargin)
 		.attr('height', (d) -> height - stat(d))
 
 		bins.on "click", (d) ->
@@ -361,6 +362,7 @@ class StopSeqPlot
 		#	.domain(s.stop_id for s in stops)
 
 		gaps = ([stops[i], stops[i+1]] for i in [0...stops.length-1])
+		gaps = gaps[...-1]
 		invspeed = (d) ->
 			stats.median[d[0].index]/(d[1].distance - d[0].distance)
 
@@ -389,12 +391,12 @@ class StopSeqPlot
 		binc = bins.append('rect')
 		.attr('class', 'binc')
 		.attr('height', height)
-		.attr('width', x.rangeBand())
+		.attr('width', x.rangeBand()-barmargin)
 
 		bars = bins.append('rect')
 		.attr('class', 'bar')
 		.attr('y', 0)
-		.attr('width', x.rangeBand())
+		.attr('width', x.rangeBand()-barmargin)
 		.attr('height', (d) -> stat(d))
 
 		bins.on "click", (d) ->
