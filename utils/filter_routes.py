@@ -236,12 +236,34 @@ def filter_shape_stop_sequences(db, shape):
 	data = dict(zip(res.keys(), data))
 
 	sx, sy = coord_proj(*zip(*shape.coordinates)[::-1])
-	matcher = RouteMatcher2d(zip(sx, sy))
+	# The weirdish std parameters ensure that the matching
+	# is done basically so that no (relative) penalty comes
+	# from long jumps, which is what we want as the "timestamp"
+	# really isn't.
+	matcher = RouteMatcher2d(zip(sx, sy),
+		measurement_std=1.0,
+		transition_std=1e6)
 
 	x, y = coord_proj(data['longitude'], data['latitude'])
 
 	seq, distances = matcher(np.array(data['sequence'], dtype=float), zip(x, y))
-	
+
+	"""
+	import matplotlib.pyplot as plt
+	dist_to_coords = scipy.interpolate.interp1d(
+		matcher.distances, np.vstack((sx, sy)).T, axis=0)
+	plt.plot(sx, sy)
+	fitx, fity = dist_to_coords(distances).T
+	#plt.plot(x, y, 'o')
+	#plt.plot(fitx, fity, 'o')
+	for i in range(len(x)):
+		plt.plot([x[i], fitx[i]], [y[i], fity[i]], '-o')
+	#plt.plot(zip(x, fitx), zip(y, fity), 'o-')
+
+	plt.show()
+	return
+	"""
+
 	tbl = db.tables['transit_shape_stop']
 	tbl.update().values(distances=distances).where(tbl.c.shape_id==shape.shape).execute()
 		
