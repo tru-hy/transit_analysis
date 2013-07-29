@@ -97,7 +97,7 @@ class DataController
 		shape_promise.done @_setup_cursor
 		traces_promise.done @_setup_data
 
-		@span_durations = new DynamicValue (start, end) =>
+		@span_durations = new TransAnal.DynamicValue (start, end) =>
 			@con.span_durations start: start, end: end
 		
 		@ready = $.Deferred()
@@ -303,104 +303,7 @@ _setup_plots = (ctrl) ->
 	ctrl.span_durations.$update.on plot_dur_tod
 
 _setup_seq_plot = (ctrl) ->
-	plot = new StopSeqPlot "#route-seq", ctrl
-
-class StopSeqPlot
-	constructor: (@el, ctrl) ->
-		$el = $(@el)
-		el = d3.select(@el)
-
-		stops = ctrl.stops
-		
-		width = $el.width()
-		height = $el.height()
-		svg = d3.select(@el).append("svg")
-		nonan = (x) -> return x if x == x; return 0
-		barmargin = 3
-
-		stats = ctrl.stop_duration_stats
-		x = d3.scale.ordinal()
-			.rangeRoundBands([0, width], 0.0)
-			.domain(s.stop_id for s in stops)
-		
-		maxvalid = Math.max (v for v in stats.median when v == v)...
-		y = d3.scale.linear()
-			.range([height, 0])
-			.domain([0, maxvalid])
-		
-		stat = (d) -> y nonan stats.median[d.index]
-
-		top = svg.append("g")
-		.attr('class', 'topbin')
-		.attr('transform', 'scale(1.0, 0.5)')
-		
-		data = top.selectAll(".bin").data(stops)
-
-		bins = data.enter().append('g')
-		.attr('class', 'bin')
-		.attr('transform', (d) -> "translate(#{x d.stop_id} , 0)")
-
-		binc = bins.append('rect')
-		.attr('class', 'binc')
-		.attr('height', height)
-		.attr('width', x.rangeBand()-barmargin)
-
-		bars = bins.append('rect')
-		.attr('class', 'bar')
-		.attr('y', stat)
-		.attr('width', x.rangeBand()-barmargin)
-		.attr('height', (d) -> height - stat(d))
-
-		bins.on "click", (d) ->
-			ctrl.cursor.setActiveRange [d.distance-50, d.distance+50]
-		
-		# BOTTOM
-		
-		stats = ctrl.inter_stop_duration_stats
-		#x = d3.scale.ordinal()
-		#	.rangeRoundBands([0, width], 0.1)
-		#	.domain(s.stop_id for s in stops)
-
-		gaps = ([stops[i], stops[i+1]] for i in [0...stops.length-1])
-		gaps = gaps[...-1]
-		invspeed = (d) ->
-			stats.median[d[0].index]/(d[1].distance - d[0].distance)
-
-			
-		maxvalid = Math.max (invspeed(d) for d in gaps)...
-		y = d3.scale.linear()
-			.range([0, height])
-			.domain([0, maxvalid])
-		
-		stat = (d) ->
-			s = y nonan invspeed d
-			return s
-
-		
-
-		bottom = svg.append("g")
-		.attr('class', 'bottombin')
-		.attr('transform', "scale(1.0, 0.5) translate(#{x.rangeBand()/2.0}, #{height+10})")
-		
-		data = bottom.selectAll(".bin").data(gaps)
-
-		bins = data.enter().append('g')
-		.attr('class', 'bin')
-		.attr('transform', (d) -> "translate(#{x d[0].stop_id} , 0)")
-
-		binc = bins.append('rect')
-		.attr('class', 'binc')
-		.attr('height', height)
-		.attr('width', x.rangeBand()-barmargin)
-
-		bars = bins.append('rect')
-		.attr('class', 'bar')
-		.attr('y', 0)
-		.attr('width', x.rangeBand()-barmargin)
-		.attr('height', (d) -> stat(d))
-
-		bins.on "click", (d) ->
-			ctrl.cursor.setActiveRange [d[0].distance+50, d[1].distance-50]
+	plot = new TransAnal.StopSeqPlot "#route-seq", ctrl
 
 
 		
@@ -408,14 +311,14 @@ $ ->
 	query = $.deparam(window.location.search[1..])
 	$("#session-info").html(header_template(query))
 	
-	promise = TransitStats.Connect query
+	promise = TransAnal.Stats.Connect query
 	promise.done (con) ->
 		ctrl = new DataController(con)
 		ctrl.ready.done _setup
 
 </script>
 <div id="session-info"></div>
-<div id="route-seq" style="width: 100%; height: 100px; clear: both;"></div>
+<div id="route-seq" style="width: 100%; height: 75px; clear: both;"></div>
 <div class="widget-container" style="width: 100%">
 <div id="route-map" style="width: 600px; height: 600px; float: left;"></div>
 <div id="route-speed" style="width: 49%; height: 200px; float: left;"></div>

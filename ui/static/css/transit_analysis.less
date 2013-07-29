@@ -11,19 +11,20 @@ body {
 	background-color: #aaa;
 }
 
+.shadowtext {
+	color: #f0f0f0;
+	font-weight: bold;
+	font-size: small;
+	text-shadow: -1px 1px 1px #999;
+
+	a{ color: #eee; }
+}
+
 #session-info {
 	margin-left: 20px;
 	margin-bottom: 10px;
-	color: #eee;
-	font-weight: bold;
-	font-size: small;
-	text-shadow: -1px 1px #999;
-}
-
-#session-info a {
-	color: #eee;
-}
-
+	.shadowtext;
+	}
 
 .widget-container >div {
 	background-color: white;
@@ -51,21 +52,35 @@ body {
 
 	.bar {
 		fill: white;
-		opacity: 0.5;
+		opacity: 0.4;
 	}
 	
 	.bin {
 		cursor: pointer;
 	}
-	.bin:hover .bar {
-		opacity: 0.9;	
-	}
+	/*.bin:hover .bar {
+		opacity: 0.6;
+	}*/
 
 	.binc {
-		opacity: 0;
+		opacity: 0.2;
+		fill: white;
+	}
+
+	.bin.pinned .binc {
+		opacity: 0.3;
 	}
 
 	.x.axis path {
-  	display: none;
-}
+  		display: none;
+	}
+
+	.binlabel {
+		.shadowtext;
+
+		div {
+			box-sizing: border-box;
+			padding: 10px;
+		}
+	}
 }
