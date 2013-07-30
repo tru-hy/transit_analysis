@@ -248,12 +248,15 @@ class ShapeSession:
 		return {percs[i][0]: results[i] for i in range(len(percs))}
 	
 	def stop_duration_stats(self):
-		stats=dict(median=[])
+		stats=dict(median=[], stop_share=[])
 		for stop in self._stops:
 			dist = stop.distance
 			s = dist - self.stop_span/2.0
 			e = dist + self.stop_span/2.0
-			stats['median'].append(np.median(self.span_durations(s, e)))
+			durs = self.span_durations(s, e)
+			stats['median'].append(np.median(durs))
+			valid = np.isfinite(durs)
+			stats['stop_share'].append(np.sum(durs[valid] > 20)/float(np.sum(valid)))
 		result = {k: np.array(v) for k, v in stats.iteritems()}
 		return result
 	

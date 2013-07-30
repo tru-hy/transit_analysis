@@ -111,12 +111,14 @@ class TransAnal.DynamicValue
 class FisheyeOrdinal
 	constructor: (@_domain, @_outmap = [undefined, undefined],
 			@_expanded_width=200,
-			@_min_width=20) ->
+			@_min_width=20
+			@_barwidth=20) ->
 		@_bins = {}
+		@_gaps = {}
 		for key, i in @_domain
 			@_bins[key] =
 				idx: i
-				expanded: false
+				forced_width: undefined
 		
 		@_calculate_widths()
 
@@ -124,29 +126,63 @@ class FisheyeOrdinal
 
 		for k, v of @
 			self[k] = v
-		
 		return self
 	
 	_calculate_widths: ->
-		n_expanded = 0
-		n_expanded += v.expanded for k, v of @_bins
-		expand_size = n_expanded*@_expanded_width
-		leftover = @rng() - expand_size
-		norm_size = leftover/(@_domain.length - n_expanded)
+		expand_size = 0
+		n_auto = 0
+		for k, v of @_bins
+			if v.forced_width?
+				expand_size += v.forced_width
+			else
+				n_auto += 1
+
+		gapsize = 0
+		gapsize += v for k, v of @_gaps
+		leftover = @rng() - expand_size - gapsize
+		norm_size = leftover/(n_auto)
 		norm_size = Math.max norm_size, @_min_width
-		pos = @_outmap[0]
+		norm_size = @autoWidth()
+		pos = @_outmap[0] + (@_gaps[null] ? 0)
 		for k in @_domain
+			pos += (@_gaps[k] ? 0)
 			b = @_bins[k]
-			b.width = if b.expanded then @_expanded_width else norm_size
+			b.width = b.forced_width ? norm_size
 			b.pos = pos
 			pos += b.width
-			
-	expand: (key) ->
-		@_bins[key].expanded = true
+	
+	autoWidth: (extra=0) ->
+		return @_barwidth
+		expand_size = 0
+		n_auto = 0
+		for k, v of @_bins
+			if v.forced_width?
+				expand_size += v.forced_width
+			else
+				n_auto += 1
+
+		gapsize = 0
+		gapsize += v for k, v of @_gaps
+		leftover = @rng() - expand_size - gapsize - extra
+		norm_size = leftover/(n_auto)
+		norm_size = Math.max norm_size, @_min_width
+		return norm_size
+		
+	
+	expandGap: (before, amount) ->
+		@_gaps[before] = amount
 		@_calculate_widths()
+	
+	contractGap: (before) ->
+		@expandGap(before, 0)
+			
+	expand: (key, width) ->
+		@_bins[key].forced_width = width ? @_expanded_width
+		@_calculate_widths()
+		return @_expanded_width
 		
 	contract: (key) ->
-		@_bins[key].expanded = false
+		@_bins[key].forced_width = undefined
 		@_calculate_widths()
 
 	rng: () -> @_outmap[1] - @_outmap[0]
@@ -156,41 +192,73 @@ class FisheyeOrdinal
 	
 	width: (key) -> @_bins[key].width
 
-	baseWidth: -> @rng()/@_domain.length
+	baseWidth: =>
+		return @autoWidth()
+		#@rng()/@_domain.length
 
 		
+
+nonan = (x) -> return x if x == x; return 0
 
 class TransAnal.StopSeqPlot
-	constructor: (@el, ctrl) ->
-		$el = $(@el)
-		el = d3.select(@el)
-
-		stops = ctrl.stops
+	constructor: (el, @ctrl) ->
+		@$el = $(el)
+		@el = d3.select(el)
+		@svg = @el.append("svg")
+		@barmargin = 1
 		
-		width = $el.width()
-		height = $el.height()
-		svg = d3.select(@el).append("svg")
+		@_render_top()
+		@_render_bottom()
 
-		nonan = (x) -> return x if x == x; return 0
-		barmargin = 1
+	_redraw_hist: (root, x, key, dur=300, delay=0) =>
+		barmargin = @barmargin
 
-		stats = ctrl.stop_duration_stats
+		root.selectAll('.bin')
+		.classed('pinned', (d) -> d.pinned ? false)
+		.transition().duration(dur).delay(delay)
+		.attr('transform', (d) -> "translate(#{x key d} , 0)")
+		
+		root.selectAll('.binc')
+		.transition().duration(dur).delay(delay)
+		.attr('width', (d) -> x.width(key d)-barmargin)
+		
+		root.selectAll('.bar')
+		.transition().duration(dur).delay(delay)
+		.attr('width', (d) -> (x.width(key d)-barmargin))
+		
+		root.selectAll('.binlabel')
+		.transition().duration(dur).delay(delay)
+		.attr('opacity', (d) -> d.label_opacity)
+		.attr('width', (d) -> x.width(key d)-barmargin)
+	
+	_redraw: (dur=300, delay=0) =>
+		@_draw_top(dur, delay)
+		@_draw_bottom(dur, delay)
+	
+	_render_top: ->
+		stops = @ctrl.stops
+		cursor = @ctrl.cursor
+		width = @$el.width()
+		height = @$el.height()/2
+		stats = @ctrl.stop_duration_stats
+
 		#x = d3.scale.ordinal()
 		#	.rangeRoundBands([0, width], 0.0)
 		#	.domain(s.stop_id for s in stops)
 		x = new FisheyeOrdinal((s.stop_id for s in stops), [0, width])
 		#x.expand stops[5].stop_id
 
-		maxvalid = Math.max (v for v in stats.median when v == v)...
+		#maxvalid = Math.max (v for v in stats.median when v == v)...
+		maxvalid = 1
 		y = d3.scale.linear()
 			.range([height-1, 0])
 			.domain([0, maxvalid])
 		
-		stat = (d) -> y nonan stats.median[d.index]
+		#stat = (d) -> y nonan stats.median[d.index]
+		stat = (d) -> y nonan stats.stop_share[d.index]
 
-		top = svg.append("g")
+		top = @svg.append("g")
 		.attr('class', 'topbin')
-		#.attr('transform', 'scale(1.0, 0.5)')
 		
 		data = top.selectAll(".bin").data(stops)
 
@@ -220,26 +288,11 @@ class TransAnal.StopSeqPlot
 		.style('overflow', "hidden")
 		.html((d) -> "#{d.stop_id}<br/>#{d.stop_name}")
 		
-		draw_top = (dur=300, delay=0) ->
-			bins
-			.classed('pinned', (d) -> d.pinned ? false)
-			.transition().duration(dur).delay(delay)
-			.attr('transform', (d) -> "translate(#{x d.stop_id} , 0)")
-			
-			binc
-			.transition().duration(dur).delay(delay)
-			.attr('width', (d) -> x.width(d.stop_id)-barmargin)
+		barmargin = @barmargin
+		@_draw_top = (args...) =>
+			@_redraw_hist top, x, ((d) -> d.stop_id), args...
 
-			bars
-			.transition().duration(dur).delay(delay)
-			.attr('width', (d) -> x.width(d.stop_id)-barmargin)
-			
-			labels
-			.transition().duration(dur).delay(delay)
-			.attr('opacity', (d) -> d.label_opacity)
-			.attr('width', (d) -> x.width(d.stop_id)-barmargin)
-
-		draw_top(0)
+		@_draw_top(0)
 		
 		total_duration = 500
 		delay = total_duration/stops.length
@@ -253,7 +306,7 @@ class TransAnal.StopSeqPlot
 				unpin d
 				return
 			pin d
-			ctrl.cursor.setActiveRange [d.distance-50, d.distance+50]
+			cursor.setActiveRange [d.distance-50, d.distance+50]
 		
 		pin = (d) ->
 			d.pinned = true
@@ -263,77 +316,134 @@ class TransAnal.StopSeqPlot
 			d.pinned = false
 			deactivate d
 
-		activate = (d) ->
-			x.expand d.stop_id
+		activate = (d) =>
+			ew = x.expand d.stop_id
+			gapsize = @bottomx.autoWidth ew
+			@bottomx.expandGap d.stop_id, ew - gapsize
 			d.active = true
 			d.label_opacity = 1.0
-			draw_top(dur=200)
+			@_redraw(dur=200)
 
-		deactivate = (d) ->
+		deactivate = (d) =>
 			return if d.pinned ? false
 			
 			x.contract d.stop_id
+			@bottomx.contractGap d.stop_id
 			d.active = false
 			d.label_opacity = 0.0
-			draw_top(dur=300, delay=300)
+			@_redraw(dur=200)
 
 		bins.on "mouseover", activate
 		bins.on "mouseout", deactivate
-
-		
-		
-		return
-		# BOTTOM
-		
-		stats = ctrl.inter_stop_duration_stats
+		@topx = x
+	
+	_render_bottom: ->
+		width = @$el.width()
+		height = @$el.height()/2
+		stats = @ctrl.inter_stop_duration_stats
+		stops = @ctrl.stops
+		cursor = @ctrl.cursor
 		x = new FisheyeOrdinal(
 			(s.stop_id for s in stops),
-			[x.baseWidth()/2.0, width+x.baseWidth()/2.0]
+			[0, width]
 			)
+		@bottomx = x
 			
 		#x = d3.scale.ordinal()
 		#	.rangeRoundBands([0, width], 0.1)
 		#	.domain(s.stop_id for s in stops)
 
-		gaps = ([stops[i], stops[i+1]] for i in [0...stops.length-1])
+		gaps = ([stops[i], stops[i+1]] for i in [0...stops.length])
 		gaps = gaps[...-1]
-		invspeed = (d) ->
-			stats.median[d[0].index]/(d[1].distance - d[0].distance)
+		speed = (d) ->
+			(d[1].distance - d[0].distance)/stats.median[d[0].index]
 
 			
-		maxvalid = Math.max (invspeed(d) for d in gaps)...
+		maxvalid = Math.max (speed(d) for d in gaps)...
 		y = d3.scale.linear()
-			.range([0, height])
+			.range([height, 0])
 			.domain([0, maxvalid])
 		
 		stat = (d) ->
-			s = y nonan invspeed d
+			s = y nonan speed d
 			return s
 
 		
+		barmargin = @barmargin
 
-		bottom = svg.append("g")
+		bottom = @svg.append("g")
 		.attr('class', 'bottombin')
-		.attr('transform', "scale(1.0, 0.5) translate(0, #{height+10})")
+		.attr('transform', "translate(#{(x.baseWidth()+barmargin)/2}, #{height+barmargin})")
 		
 		data = bottom.selectAll(".bin").data(gaps)
 
 		bins = data.enter().append('g')
 		.attr('class', 'bin')
-		.attr('transform', (d) -> "translate(#{x d[0].stop_id} , 0)")
+		
+				
+		pin = (d) ->
+			d.pinned = true
 
+		unpin = (d) ->
+			d.pinned = false
+			deactivate d
+
+		activate = (d) =>
+			ew = x.expand d[0].stop_id
+			gapsize = @topx.autoWidth ew
+			@topx.expandGap d[1].stop_id, ew - gapsize
+			d.active = true
+			d.label_opacity = 1.0
+			@_redraw(dur=200)
+
+		deactivate = (d) =>
+			return if d.pinned ? false
+			
+			x.contract d[0].stop_id
+			@topx.contractGap d[1].stop_id
+			d.active = false
+			d.label_opacity = 0.0
+			@_redraw(dur=200)
+
+		
 		binc = bins.append('rect')
 		.attr('class', 'binc')
 		.attr('height', height)
-		.attr('width', (d) -> x.width(d[0].stop_id)-barmargin)
 
 		bars = bins.append('rect')
 		.attr('class', 'bar')
-		.attr('y', 0)
-		.attr('width', (d) -> x.width(d[0].stop_id)-barmargin)
+		.attr('y', (d) -> height - stat(d))
 		.attr('height', (d) -> stat(d))
+		
+		labels = bins.append('foreignObject')
+		.attr('class', 'binlabel')
+		.attr('x', 0)
+		.attr('y', 0)
+		.attr('height', height)
+		.attr('opacity', (d) -> d.label_opacity=0; 0)
+		
+		labels
+		.append("xhtml:div")
+		.style("height", height)
+		.style('width', "100%")
+		.style('overflow', "hidden")
+		.html((d) -> "#{d[0].stop_id} - #{d[1].stop_id}")
+		
+		@_draw_bottom = (args...) =>
+			@_redraw_hist bottom, x, ((d) -> d[0].stop_id), args...
+
+		@_draw_bottom(0)
 
 		bins.on "click", (d) ->
-			ctrl.cursor.setActiveRange [d[0].distance+50, d[1].distance-50]
+			if d.pinned ? false
+				unpin d
+				return
+			pin d
+			cursor.setActiveRange [d[0].distance+50, d[1].distance-50]
+
+		
+		bins.on "mouseover", activate
+		bins.on "mouseout", deactivate
+
 
 ###
