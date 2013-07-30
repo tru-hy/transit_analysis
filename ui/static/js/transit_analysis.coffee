@@ -110,9 +110,9 @@ class TransAnal.DynamicValue
 
 class FisheyeOrdinal
 	constructor: (@_domain, @_outmap = [undefined, undefined],
-			@_expanded_width=200,
-			@_min_width=20
-			@_barwidth=20) ->
+			@_expanded_width=201,
+			@_min_width=21
+			@_barwidth=21) ->
 		@_bins = {}
 		@_gaps = {}
 		for key, i in @_domain
@@ -192,6 +192,8 @@ class FisheyeOrdinal
 	
 	width: (key) -> @_bins[key].width
 
+	gapWidth: (key) -> @_gaps[key] ? 0
+
 	baseWidth: =>
 		return @autoWidth()
 		#@rng()/@_domain.length
@@ -230,6 +232,8 @@ class TransAnal.StopSeqPlot
 		.transition().duration(dur).delay(delay)
 		.attr('opacity', (d) -> d.label_opacity)
 		.attr('width', (d) -> x.width(key d)-barmargin)
+		
+		
 	
 	_redraw: (dur=300, delay=0) =>
 		@_draw_top(dur, delay)
@@ -287,10 +291,24 @@ class TransAnal.StopSeqPlot
 		.style('width', "100%")
 		.style('overflow', "hidden")
 		.html((d) -> "#{d.stop_id}<br/>#{d.stop_name}")
+
+		tags = bins.append('foreignObject')
+		.attr('class', 'bintag')
+		.attr('x', x.baseWidth()/2+@barmargin)
+		.attr('height', 0)
+		.attr('y', height)
+		.append("xhtml:div")
+		.html("Stats here")
 		
 		barmargin = @barmargin
-		@_draw_top = (args...) =>
-			@_redraw_hist top, x, ((d) -> d.stop_id), args...
+		@_draw_top = (dur=300, delay=0) =>
+			@_redraw_hist top, x, ((d) -> d.stop_id), dur, delay
+
+			return if not @bottomx
+			top.selectAll('.bintag')
+			.attr('width', (d) => @bottomx.gapWidth(d.stop_id)-@barmargin*3)
+			.transition().duration(dur).delay(delay+dur)
+			.attr('height', (d) => (height-@barmargin*2)*(d.active ? false))
 
 		@_draw_top(0)
 		
@@ -322,6 +340,8 @@ class TransAnal.StopSeqPlot
 			@bottomx.expandGap d.stop_id, ew - gapsize
 			d.active = true
 			d.label_opacity = 1.0
+			dur = 200
+
 			@_redraw(dur=200)
 
 		deactivate = (d) =>
@@ -412,9 +432,9 @@ class TransAnal.StopSeqPlot
 
 		bars = bins.append('rect')
 		.attr('class', 'bar')
-		.attr('y', (d) -> height - stat(d))
-		.attr('height', (d) -> stat(d))
-		
+		.attr('height', 0)
+		.attr('y', height)
+				
 		labels = bins.append('foreignObject')
 		.attr('class', 'binlabel')
 		.attr('x', 0)
@@ -429,10 +449,31 @@ class TransAnal.StopSeqPlot
 		.style('overflow', "hidden")
 		.html((d) -> "#{d[0].stop_id} - #{d[1].stop_id}")
 		
-		@_draw_bottom = (args...) =>
-			@_redraw_hist bottom, x, ((d) -> d[0].stop_id), args...
+		tags = bins.append('foreignObject')
+		.attr('class', 'bintag')
+		.attr('x', (@barmargin+x.baseWidth())/2)
+		.attr('height', 0)
+		.attr('y', 0)
+		.append("xhtml:div")
+		.html("Stats here")
+		
+		@_draw_bottom = (dur=300, delay=0) =>
+			@_redraw_hist bottom, x, ((d) -> d[0].stop_id), dur, delay
+			
+			bottom.selectAll('.bintag')
+			.attr('width', (d) => @topx.gapWidth(d[1].stop_id)-@barmargin*3)
+			.transition().duration(dur).delay(delay+dur)
+			.attr('y', (d) => -(height - @barmargin*2)*(d.active ? false))
+			.attr('height', (d) => (height-@barmargin*2)*(d.active ? false))
 
 		@_draw_bottom(0)
+		
+		total_duration = 500
+		delay = total_duration/stops.length
+		bars
+		.transition().duration(total_duration).delay((d, i) -> i*delay)
+		.attr('y', (d) -> height - stat(d))
+		.attr('height', (d) -> stat(d))
 
 		bins.on "click", (d) ->
 			if d.pinned ? false

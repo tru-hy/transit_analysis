@@ -50,25 +50,23 @@ body {
 		shape-rendering: crispEdges;
 	}
 
+	@barcolor: #ccc;
+	@bincolor: #bbb;
+
 	.bar {
-		fill: white;
-		opacity: 0.4;
+		fill: @barcolor;
 	}
 	
 	.bin {
 		cursor: pointer;
 	}
-	/*.bin:hover .bar {
-		opacity: 0.6;
-	}*/
 
+	
 	.binc {
-		opacity: 0.2;
-		fill: white;
+		fill: @bincolor;
 	}
 
 	.bin.pinned .binc {
-		opacity: 0.3;
 	}
 
 	.x.axis path {
@@ -80,8 +78,23 @@ body {
 
 		div {
 			box-sizing: border-box;
-			padding: 5px;
 			text-align: center;
 		}
+	}
+	
+	.bintag {
+		.shadowtext;
+		padding: 5px;
+		box-sizing: border-box;
+	}
+
+	.topbin .bintag {
+		background-color: @barcolor;
+		padding-top: 0;
+	}
+
+	.bottombin .bintag {
+		background-color: @bincolor;
+		padding-bottom: 0;
 	}
 }
