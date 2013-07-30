@@ -162,8 +162,8 @@ _setup = (ctrl) ->
 		ctrl.cursor.setActiveRange rng
 	
 	_setup_seq_plot ctrl
-	_setup_map ctrl
-	_setup_plots ctrl
+	#_setup_map ctrl
+	#_setup_plots ctrl
 
 _setup_map = (ctrl) ->
 	Trusas.Map.Create($("#route-map")[0]).done (route_map) ->
@@ -227,7 +227,10 @@ _setup_plots = (ctrl) ->
 		fillBetween: 'lowq'
 		lineWidth: 0
 		color: color
-		lines: show: true, fill: 0.3, lineWidth: 0
+		resizer = () =>
+			width = 			@svg
+						.attr('width', width)
+			#.transition().duration(dur).delay(delay)		lines: show: true, fill: 0.3, lineWidth: 0
 	
 	timeticks = [0, 1, 5, 10, 20, 30, 60, 120, 300, 600]
 	el = $("#route-speed")
@@ -317,7 +320,7 @@ $ ->
 
 </script>
 <div id="session-info"></div>
-<div id="route-seq" style="width: 100%; height: 120px; clear: both;"></div>
+<div id="route-seq" style="clear: both;"></div>
 <div class="widget-container" style="width: 100%">
 <div id="route-map" style="width: 600px; height: 600px; float: left;"></div>
 <div id="route-speed" style="width: 49%; height: 200px; float: left;"></div>

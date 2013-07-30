@@ -202,6 +202,20 @@ class FisheyeOrdinal
 
 nonan = (x) -> return x if x == x; return 0
 
+setdefaults = (defaults, obj) ->
+	if not obj?
+		return defaults
+	
+	newobj = {}
+	for k, v of obj
+		newobj[k] = v
+	
+	for k, v of defaults
+		if k not of newobj
+			newobj[k] = v
+	
+	return newobj
+
 class TransAnal.StopSeqPlot
 	constructor: (el, @ctrl) ->
 		@$el = $(el)
@@ -212,7 +226,13 @@ class TransAnal.StopSeqPlot
 		@_render_top()
 		@_render_bottom()
 
-	_redraw_hist: (root, x, key, dur=300, delay=0) =>
+		@_default_trans =
+			dur: 300
+			delay: 0
+
+	_redraw_hist: (root, x, key, opts) =>
+		opts = setdefaults @_default_trans, opts
+		{dur, delay, act_el} = opts
 		barmargin = @barmargin
 
 		root.selectAll('.bin')
@@ -233,12 +253,42 @@ class TransAnal.StopSeqPlot
 		.attr('opacity', (d) -> d.label_opacity)
 		.attr('width', (d) -> x.width(key d)-barmargin)
 		
+		topbin = @svg.select('.topbin')[0][0]
+		
+		# The svg won't overflow at least in chromium
+		# without the explicit width
+		svgtrans = @svg
+		.transition().duration(dur).delay(delay)
+		.attrTween('width', -> -> topbin.getBoundingClientRect().width)
+
+		if not act_el?
+			return
+
+		scrollpos = =>
+			el_width = @$el.width()
+			my_bb = act_el.getBoundingClientRect()
+			
+			to_left = Math.min(my_bb.left - 20, 0)
+			to_right = Math.max((my_bb.right + 10) - el_width, 0)
+
+			return @el[0][0].scrollLeft + to_left + to_right
+		
+		# Some hack!
+		@el.attr('tmp_scrollLeft', @el[0][0].scrollLeft)
+		svgtrans.each "end", =>
+			@el
+			.transition().duration(dur).delay(delay)
+			.attr("tmp_scrollLeft", scrollpos)
+			.attrTween("justahack", => =>
+				@el[0][0].scrollLeft = @el.attr('tmp_scrollLeft'))
+
 		
 	
-	_redraw: (dur=300, delay=0) =>
-		@_draw_top(dur, delay)
-		@_draw_bottom(dur, delay)
-	
+	_redraw: (opts) =>
+		@_draw_top(opts)
+		@_draw_bottom(opts)
+		
+					
 	_render_top: ->
 		stops = @ctrl.stops
 		cursor = @ctrl.cursor
@@ -300,17 +350,19 @@ class TransAnal.StopSeqPlot
 		.append("xhtml:div")
 		.html("Stats here")
 		
+		
 		barmargin = @barmargin
-		@_draw_top = (dur=300, delay=0) =>
-			@_redraw_hist top, x, ((d) -> d.stop_id), dur, delay
+		@_draw_top = (opts) =>
+			@_redraw_hist top, x, ((d) -> d.stop_id), opts
 
 			return if not @bottomx
+			opts = setdefaults @_default_trans, opts
 			top.selectAll('.bintag')
 			.attr('width', (d) => @bottomx.gapWidth(d.stop_id)-@barmargin*3)
-			.transition().duration(dur).delay(delay+dur)
+			.transition().duration(opts.dur).delay(opts.delay+opts.dur)
 			.attr('height', (d) => (height-@barmargin*2)*(d.active ? false))
 
-		@_draw_top(0)
+		@_draw_top(dur: 0)
 		
 		total_duration = 500
 		delay = total_duration/stops.length
@@ -340,9 +392,9 @@ class TransAnal.StopSeqPlot
 			@bottomx.expandGap d.stop_id, ew - gapsize
 			d.active = true
 			d.label_opacity = 1.0
-			dur = 200
-
-			@_redraw(dur=200)
+			
+			el = bins.filter((bd) -> bd == d)[0][0]
+			@_redraw(act_el: el)
 
 		deactivate = (d) =>
 			return if d.pinned ? false
@@ -351,12 +403,13 @@ class TransAnal.StopSeqPlot
 			@bottomx.contractGap d.stop_id
 			d.active = false
 			d.label_opacity = 0.0
-			@_redraw(dur=200)
+			@_redraw(dur: 200)
 
-		bins.on "mouseover", activate
+		bins.on "mouseover", (d, args...) -> activate d, @, args...
 		bins.on "mouseout", deactivate
-		@topx = x
 	
+		@topx = x
+		
 	_render_bottom: ->
 		width = @$el.width()
 		height = @$el.height()/2
@@ -414,7 +467,8 @@ class TransAnal.StopSeqPlot
 			@topx.expandGap d[1].stop_id, ew - gapsize
 			d.active = true
 			d.label_opacity = 1.0
-			@_redraw(dur=200)
+			el = bins.filter((bd) -> bd == d)[0][0]
+			@_redraw(act_el: el)
 
 		deactivate = (d) =>
 			return if d.pinned ? false
@@ -423,7 +477,7 @@ class TransAnal.StopSeqPlot
 			@topx.contractGap d[1].stop_id
 			d.active = false
 			d.label_opacity = 0.0
-			@_redraw(dur=200)
+			@_redraw(dur: 200)
 
 		
 		binc = bins.append('rect')
@@ -457,16 +511,23 @@ class TransAnal.StopSeqPlot
 		.append("xhtml:div")
 		.html("Stats here")
 		
-		@_draw_bottom = (dur=300, delay=0) =>
-			@_redraw_hist bottom, x, ((d) -> d[0].stop_id), dur, delay
+		@_draw_bottom = (opts) =>
+			opts = setdefaults @_default_trans, opts
+			{dur, delay} = opts
+			@_redraw_hist bottom, x, ((d) -> d[0].stop_id), opts
 			
 			bottom.selectAll('.bintag')
 			.attr('width', (d) => @topx.gapWidth(d[1].stop_id)-@barmargin*3)
 			.transition().duration(dur).delay(delay+dur)
 			.attr('y', (d) => -(height - @barmargin*2)*(d.active ? false))
 			.attr('height', (d) => (height-@barmargin*2)*(d.active ? false))
+			
+			bottom.selectAll('.binc')
+			.transition().duration(dur).delay(delay+dur)
+			.attr('height', (d) => (height)*(d.active ? false)+height)
 
-		@_draw_bottom(0)
+
+		@_draw_bottom(dur: 0)
 		
 		total_duration = 500
 		delay = total_duration/stops.length
