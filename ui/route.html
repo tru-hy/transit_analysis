@@ -162,8 +162,8 @@ _setup = (ctrl) ->
 		ctrl.cursor.setActiveRange rng
 	
 	_setup_seq_plot ctrl
-	#_setup_map ctrl
-	#_setup_plots ctrl
+	_setup_map ctrl
+	_setup_plots ctrl
 
 _setup_map = (ctrl) ->
 	Trusas.Map.Create($("#route-map")[0]).done (route_map) ->

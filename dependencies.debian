@@ -6,5 +6,6 @@ postgresql-contrib-9.1
 python-psycopg2
 python-virtualenv
 python-numpy
+python-scipy
 libcap2-bin
 pv

@@ -1,3 +1,5 @@
+#!/usr/bin/env python2
+
 # TODO: Currently expects XML records separated by newlines.
 #	The records can't contain newlines in themselves.
 #	Very ugly, and unconformant, but, you know, XML.

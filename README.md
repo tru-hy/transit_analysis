@@ -1,17 +1,9 @@
 # Transit Analysis
 
-A work in progress software system for analyzing transit data.
-In very early development.
-
+A software system for visualizing and analyzing transit data.
+Under heavy development.
 
 ## Getting started
-
-The system currently consists mostly of the database
-schema and utilities to dump some data in to the database.
-
-Requires Python 2.x (developed on 2.7), modern version of Postgresql
-(developed on 9.2) and a bunch of more or less obscure Python
-packages.
 
 ### Installation
 
@@ -35,6 +27,9 @@ sudo to run it (it'll ask the password as it goes):
 TODO. See what's done in [install.debian.bash](install.debian.bash).
 
 ### Import data
+
+*NOTE* The data importation is far from streamlined at the moment.
+All this should be done with one or two simple commands.
 
 Due to Python's challenged (to be polite) import system, currently
 the parent of the `transit_analysis` directory has to be in PYTHONPATH
@@ -60,6 +55,36 @@ City of Tampere's live SIRI data. To load those departures, run:
 
     PYTHONPATH=../../../ ./merge.bash transit_departure <gtfs directory> ../schema_adapters/tampere.py
 
+#### Live data
+
+Currently a City of Tampere's SIRI realtime data is the only live data
+format supported. To import it, run
+
+    cd utils/siri
+    cat <siri dump file> |PYTHONPATH=../../.. ./siri_db_load.bash ../schema_adapters/tampere.py
+
+*NOTE* The datasets are quite large and thus this will take quite a while.
+Especially as the parsing isn't as efficient as it could.
+
 ### Process data
 
-TODO
+The dumped data needs to be mapped to the known routes for efficient
+visualization. This is done with:
+
+    cd utils
+    PYTHONPATH=../.. ./filter_routes.py filter-stop-sequences
+    PYTHONPATH=../.. ./filter_routes.py filter-routes
+
+### Run the server
+
+If all went well, you can issue `./rest_server.py` from the project
+root and with default settings will find something by pointing your
+browser to `http://localhost:8080`. Create `config_local.py` in the source
+root to override the settings.py for something more suitable.
+
+Note that there's no built in trickery to run the server in a privileged
+port. One, albeit somewhat risky, way to accomplish this without running
+the whole shebang as superuser is to grant the privileged port binding
+capability to `.virtualenv/bin/python` by commanding
+`sudo setcap 'cap_net_bind_service=+ep' .virtualenv/bin/python`.
+
