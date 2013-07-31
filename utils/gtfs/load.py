@@ -142,7 +142,6 @@ def transit_departure(gtfs_dir, adapter, **kwargs):
 		record = list(record)
 		if record[trace_idx] is None:
 			record[trace_idx] = "transit_departure/"+depid
-		record = transit_departure(*record)
 		yield rec.transit_departure(*record)
 
 if __name__ == '__main__':
