@@ -1,7 +1,9 @@
+#!/usr/bin/env python2
+
 from sqlalchemy import *
 from sqlalchemy.dialects.postgresql import HSTORE, ARRAY
 
-from transit_analysis import config
+import config
 metadata = MetaData()
 
 Table("coordinate_trace", metadata,

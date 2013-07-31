@@ -1,3 +1,5 @@
+#!/usr/bin/env python2
+
 from StringIO import StringIO
 import os
 from collections import OrderedDict
@@ -6,8 +8,9 @@ import urlparse
 import sqlalchemy as sqa
 
 from ext.trusas_server import session_server, providers, serialize
-from transit_analysis import recordtypes
+import recordtypes
 import schema
+import config
 
 def _to_nulls(lst):
 	# Hack to convert NaNs and Infs to JSON nulls
@@ -333,11 +336,13 @@ def main(uri=schema.default_uri):
 	root = session_server.StaticUnderlayServer(my_static)
 	root.resources = resources
 
-	config = {
+	cpconfig = {
+		'server.socket_host': config.server_host,
+		'server.socket_port': config.server_port,
 		'tools.gzip.on': True,
 		'tools.gzip.mime_types': ['text/*', 'application/json']
 		}
-	cp.quickstart(root, config={'global': config})
+	cp.quickstart(root, config={'global': cpconfig})
 
 if __name__ == '__main__':
 	import argh
