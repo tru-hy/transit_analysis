@@ -52,6 +52,13 @@ All GTFS data that don't directly map with live data can be loaded with:
 
 Where `<gtfs directory>` is directory containing the gtfs .txt files.
 
+Departures, meaning the physical drives, which are mapped to live
+data require additional mangling as the live data is not necessarily
+as such compatible with the GTFS schema. This mangling is done by
+"schema adapters". Currently only (working) such adapter is for
+City of Tampere's live SIRI data. To load those departures, run:
+
+    PYTHONPATH=../../../ ./merge.bash transit_departure <gtfs directory> ../schema_adapters/tampere.py
 
 ### Process data
 
