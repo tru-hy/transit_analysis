@@ -1,5 +1,5 @@
 make
-g++
+clang
 libspatialindex-dev
 postgresql
 postgresql-contrib-9.1
@@ -7,3 +7,4 @@ python-psycopg2
 python-virtualenv
 python-numpy
 libcap2-bin
+pv
