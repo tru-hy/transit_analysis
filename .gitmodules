@@ -5,3 +5,6 @@
 	path = ext/pymapmatch
 	url = https://github.com/tru-hy/pymapmatch.git
 	branch = master
+[submodule "ext/trusas_server"]
+	path = ext/trusas_server
+	url = https://github.com/tru-hy/trusas_server.git

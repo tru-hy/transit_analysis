@@ -5,7 +5,7 @@ import urlparse
 
 import sqlalchemy as sqa
 
-from trusas_server import session_server, providers, serialize
+from ext.trusas_server import session_server, providers, serialize
 from transit_analysis import recordtypes
 import schema
 
