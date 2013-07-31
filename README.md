@@ -28,13 +28,30 @@ sudo to run it (it'll ask the password as it goes):
    
     ./install.debian.bash
 
+
+
 #### Slow
 
 TODO. See what's done in [install.debian.bash](install.debian.bash).
 
 ### Import data
 
-TODO
+Due to Python's challenged (to be polite) import system, currently
+the parent of the `transit_analysis` directory has to be in PYTHONPATH
+or somehow else findable by the import mechanism by name `transit_analysis`
+to run the import scripts. You need to also have activated the virtualenv
+by running `source .virtualenv/bin/activate`.
+
+#### GTFS
+
+Currently the only supported data format for the transit "metadata" is GTFS.
+All GTFS data that don't directly map with live data can be loaded with:
+
+    cd utils/gtfs
+    PYTHONPATH=../../../ ./load_common.bash <gtfs directory>
+
+Where `<gtfs directory>` is directory containing the gtfs .txt files.
+
 
 ### Process data
 
