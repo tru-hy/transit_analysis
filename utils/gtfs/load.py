@@ -1,3 +1,5 @@
+#!/usr/bin/env python2
+
 import sys
 import os
 from itertools import chain, groupby
@@ -43,7 +45,7 @@ def coordinate_shape(gtfs_dir, **kwargs):
 		distances = [0.0] + list(np.cumsum(diffs))
 		yield rec.coordinate_shape(
 			shape=shape_id,
-			coordinates=coordinates,
+			coordinates=latlon,
 			distances=distances)
 
 @csv

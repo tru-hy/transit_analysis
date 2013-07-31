@@ -1,3 +1,5 @@
+#!/usr/bin/env python2
+
 from transit_analysis import schema
 
 template = """

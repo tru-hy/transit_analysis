@@ -3,3 +3,5 @@ argh
 argcomplete
 simplejson
 CherryPy
+python-dateutil
+pytz
