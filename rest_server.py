@@ -159,6 +159,13 @@ def axispercentile(values, percentiles):
 				percentile*100)
 	return results
 
+percs = (
+		('lowp', 0.05),
+		('lowq', 0.25),
+		('median', 0.5),
+		('highq', 0.75),
+		('highp', 0.95))
+
 class ShapeSession:
 	def __init__(self, db, **kwargs):
 		self.stop_span = 100.0
@@ -231,48 +238,40 @@ class ShapeSession:
 		return self._distgrid
 	
 	def time_spent_stats(self):
-		percs = (
-			('lowp', 0.05),
-			('lowq', 0.25),
-			('median', 0.5),
-			('highq', 0.75),
-			('highp', 0.95))
 		results = axispercentile(self._time_spent, zip(*percs)[1])
 		return {percs[i][0]: results[i] for i in range(len(percs))}
 	
 	def speed_stats(self):
-		percs = (
-			('lowp', 0.05),
-			('lowq', 0.25),
-			('median', 0.5),
-			('highq', 0.75),
-			('highp', 0.95))
 		results = axispercentile(self._speed, zip(*percs)[1])
 		return {percs[i][0]: results[i] for i in range(len(percs))}
 	
 	def stop_duration_stats(self):
+		alldurs = []
+		stop_share = []
 		stats=dict(median=[], stop_share=[])
 		for stop in self._stops:
 			dist = stop.distance
 			s = dist - self.stop_span/2.0
 			e = dist + self.stop_span/2.0
 			durs = self.span_durations(s, e)
-			stats['median'].append(np.median(durs))
+			alldurs.append(durs)
 			valid = np.isfinite(durs)
-			stats['stop_share'].append(np.sum(durs[valid] > 20)/float(np.sum(valid)))
-		result = {k: np.array(v) for k, v in stats.iteritems()}
-		return result
+			stop_share.append(np.sum(durs[valid] > 20)/float(np.sum(valid)))
+		#result = {k: np.array(v) for k, v in stats.iteritems()}
+		results = axispercentile(np.array(alldurs).T, zip(*percs)[1])
+		results = {percs[i][0]: results[i] for i in range(len(percs))}
+		results['stop_share'] = np.array(stop_share)
+		return results
 	
 	def inter_stop_duration_stats(self):
-		stats=dict(median=[])
+		durs = []
 		for i in range(len(self._stops)-1):
 			s = self._stops[i].distance + self.stop_span/2.0
 			e = self._stops[i+1].distance - self.stop_span/2.0
-			stats['median'].append(np.median(self.span_durations(s, e)))
-		result = {k: np.array(v) for k, v in stats.iteritems()}
-		return result
-
-
+			durs.append(self.span_durations(s, e))
+		results = axispercentile(np.array(durs).T, zip(*percs)[1])
+		return {percs[i][0]: results[i] for i in range(len(percs))}
+		
 	def distance_bin(self, distance):
 		return min(max(0, int(distance/self._binwidth)),
 			len(self._distgrid) - 1)

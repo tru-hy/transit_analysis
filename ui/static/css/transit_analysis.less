@@ -69,16 +69,48 @@ body {
 	.x.axis path {
   		display: none;
 	}
+	
 
 	.binlabel {
 		.shadowtext;
+		padding: 5px;
+		
+		label {
+			display: block;
+			font-size: x-small;
+			&.right {
+				text-align: right;
+				margin-top: -0.9em;
+			}
+			
+		}
+
+		sublabel {
+			display: block;
+			font-size: x-small;
+			margin: 0;
+			padding: 0;
+
+				}
 
 		div {
 			box-sizing: border-box;
-			text-align: center;
 		}
 	}
 	
+	.binlabel table {
+		width: 100%;
+
+		th {
+			text-align: left;
+			font-size: x-small;
+		}
+
+		td { 
+			text-align: right;
+		}
+	}
+
 	.bintag {
 		.shadowtext;
 		padding: 5px;

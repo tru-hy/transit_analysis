@@ -247,6 +247,7 @@ class TransAnal.StopSeqPlot
 		root.selectAll('.bar')
 		.transition().duration(dur).delay(delay)
 		.attr('width', (d) -> (x.width(key d)-barmargin))
+		.attr('opacity', (d) -> (not d.active ? false)*1.0)
 		
 		root.selectAll('.binlabel')
 		.transition().duration(dur).delay(delay)
@@ -335,20 +336,50 @@ class TransAnal.StopSeqPlot
 		.attr('height', height)
 		.attr('opacity', (d) -> d.label_opacity=0; 0)
 		
+				
+		stattable = (d) ->
+			"""
+			<table>
+			<tr>
+			  <th>Stop %</th><td>
+			  #{Math.round stats.stop_share[d.index]*100}%
+			  </td>
+			</tr>
+			<tr>
+			  <th>&lt 50%</th><td>
+			  #{Math.round stats.median[d.index]}s
+			  </td>
+			</tr>
+			<tr>
+			  <th>&lt 75%</th><td>
+			  #{Math.round stats.highq[d.index]}s
+			  </td>
+			</tr>
+
+			</table>
+			"""
+		
 		labels
 		.append("xhtml:div")
 		.style("height", height)
 		.style('width', "100%")
 		.style('overflow', "hidden")
-		.html((d) -> "#{d.stop_id}<br/>#{d.stop_name}")
+		.html((d) -> """
+			<label>
+		 	<sublabel>#{d.stop_id}</sublabel>
+			#{d.stop_name}
+			</label>
+			#{stattable d}
+			""")
 
-		tags = bins.append('foreignObject')
-		.attr('class', 'bintag')
-		.attr('x', x.baseWidth()/2+@barmargin)
-		.attr('height', 0)
-		.attr('y', height)
-		.append("xhtml:div")
-		.html("Stats here")
+
+		#tags = bins.append('foreignObject')
+		#.attr('class', 'bintag')
+		#.attr('x', x.baseWidth()/2+@barmargin)
+		#.attr('height', 0)
+		#.attr('y', height)
+		#.append("xhtml:div")
+		#.html("Stats here")
 		
 		
 		barmargin = @barmargin
@@ -486,6 +517,7 @@ class TransAnal.StopSeqPlot
 
 		bars = bins.append('rect')
 		.attr('class', 'bar')
+		.attr('opacity', 1)
 		.attr('height', 0)
 		.attr('y', height)
 				
@@ -496,20 +528,46 @@ class TransAnal.StopSeqPlot
 		.attr('height', height)
 		.attr('opacity', (d) -> d.label_opacity=0; 0)
 		
+		stattable = (d) ->
+			"""
+			<table>
+			<tr>
+			  <th>&lt 50%</th><td>
+			  #{Math.round stats.median[d[0].index]}s
+			  </td>
+			</tr>
+			<tr>
+			  <th>&lt 75%</th><td>
+			  #{Math.round stats.highq[d[0].index]}s
+			  </td>
+			</tr>
+
+			</table>
+			"""
+
 		labels
 		.append("xhtml:div")
 		.style("height", height)
 		.style('width', "100%")
 		.style('overflow', "hidden")
-		.html((d) -> "#{d[0].stop_id} - #{d[1].stop_id}")
+		.html((d) -> """
+		<label>
+		#{d[0].stop_name}
+		</label>
+		<label class="right">
+		#{d[1].stop_name}
+		</label>
+		#{stattable d}
+		""")
 		
-		tags = bins.append('foreignObject')
-		.attr('class', 'bintag')
-		.attr('x', (@barmargin+x.baseWidth())/2)
-		.attr('height', 0)
-		.attr('y', 0)
-		.append("xhtml:div")
-		.html("Stats here")
+		
+		#tags = bins.append('foreignObject')
+		#.attr('class', 'bintag')
+		#.attr('x', (@barmargin+x.baseWidth())/2)
+		#.attr('height', 0)
+		#.attr('y', 0)
+		#.append("xhtml:div")
+		#.html("Something here?")
 		
 		@_draw_bottom = (opts) =>
 			opts = setdefaults @_default_trans, opts
