@@ -26,6 +26,7 @@
 
 <script type="text/javascript" src="static/js/underscore.js"></script>
 
+<link rel="stylesheet" href="static/bootstrap/css/bootstrap.css" type="text/css"/>
 <link rel="stylesheet/less" href="static/css/transit_analysis.less" type="text/css"/>
 
 <script type="text/javascript" src="static/js/less-1.4.1.js"></script>
@@ -320,10 +321,21 @@ $ ->
 
 </script>
 <div id="session-info"></div>
-<div id="route-seq" style="clear: both;"></div>
-<div class="widget-container" style="width: 100%">
-<div id="route-map" style="width: 600px; height: 600px; float: left;"></div>
-<div id="route-speed" style="width: 49%; height: 200px; float: left;"></div>
-<div id="route-duration" style="width: 49%; min-height: 200px; float: left;"></div>
-<div id="duration-by-tod" style="width: 49%; min-height: 200px; float: left;"></div>
+<div class="widget-container" class="row">
+	<div class="col-6" style="height: 410px">
+		<div id="route-map"></div>
+	</div>
+	<div class="col-6" style="height: 200px;">
+		<div id="route-speed"></div>
+	</div>
+	<div class="col-6" style="height: 200px;">
+		<div id="route-duration"></div>
+	</div>
+	<div class="col-6" style="height: 200px;">
+		<div id="route-seq"></div>
+	</div>
+
+	<div class="col-6" style="height: 200px;">
+		<div id="duration-by-tod"></div>
+	</div>
 </div>

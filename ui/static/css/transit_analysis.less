@@ -1,3 +1,5 @@
+//@import (css) "../bootstrap/css/bootstrap.css";
+
 .slick-row a.view-route-link {
 	display: none;
 }
@@ -26,14 +28,7 @@ body {
 	.shadowtext;
 	}
 
-.widget-container >div {
-	background-color: white;
-	margin-bottom: 20px;
-	margin-left: 20px;
-	padding: 10px;
-	overflow: hidden;
-	box-shadow: -4px 4px #999;
-}
+
 
 #route-map > .cesium-widget > canvas {
 	width: 100%;
@@ -42,9 +37,7 @@ body {
 
 #route-seq {
 	padding-bottom: 1px;
-	height: 120px;
 	overflow-x: auto;
-	margin-bottom: 10px;
 
 	.axis path,
 	.axis line {
@@ -100,4 +93,23 @@ body {
 		background-color: @bincolor;
 		padding-bottom: 0;
 	}
+}
+
+
+.widget-container {
+	>div>div {
+		height: 100%;
+		width: 100%;
+		background-color: white;
+	}
+
+	#route-seq {
+		background-color: transparent;
+	}
+
+	>div {
+		margin-bottom: 10px;
+	}
+	//.row;
+
 }
