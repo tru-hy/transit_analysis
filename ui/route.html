@@ -115,8 +115,8 @@ class DataController
 		@pos_to_coords = Trusas.coord_interp data.distances, lats, lons
 		@cursorpath = Trusas.rangepath data.distances, lats, lons
 		
-		$(@cursor).on "activeRangeChange", (e, rng) =>
-			@span_durations.refresh rng[0], rng[1]
+		$(@cursor).on "activeRangeChange", dcall ((e, rng) =>
+			@span_durations.refresh rng[0], rng[1]), 1000
 	
 	_setup_data: (data) =>
 		for key of data
