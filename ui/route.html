@@ -259,6 +259,14 @@ _setup_plots = (ctrl) ->
 		end = axes.xaxis.max
 		ctrl.cursor.setActiveRange([start, end])
 	
+	$(ctrl.cursor).on "activeRangeChange", ->
+		rng = ctrl.cursor.getActiveRange()
+		opts = plot.getAxes().xaxis.options
+		opts.min = rng[0]
+		opts.max = rng[1]
+		plot.setupGrid()
+		plot.draw()
+	
 	$(el).bind "plotzoom", update_cursor
 	$(el).bind "plotpan", update_cursor
 
@@ -336,9 +344,9 @@ $ ->
 
 	</div>
 	<div class="col-6" style="height: 200px;">
-		<axislabel class="toplabel">Stops</axislabel>
+		<axislabel class="toplabel">Stops (stop %)</axislabel>
 		<div id="route-seq"></div>
-		<axislabel class="xlabel">Between stops</axislabel>
+		<axislabel class="xlabel">Between stops (median speed)</axislabel>
 	</div>
 
 	<div class="col-6" style="height: 200px;">
