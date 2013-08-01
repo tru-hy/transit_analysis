@@ -38,6 +38,7 @@ body {
 #route-seq {
 	padding-bottom: 1px;
 	overflow-x: auto;
+	overflow-y: hidden; // TODO, shouldn't happen!
 
 	.axis path,
 	.axis line {
@@ -103,12 +104,39 @@ body {
 		background-color: white;
 	}
 
+	>div axislabel {
+		.shadowtext;
+		font-size: x-small;
+		&.xlabel {
+			display: block;
+			margin-left: 10px;
+		}
+
+		&.ylabel {
+			position: absolute;
+			left: 0px;
+			bottom: 0px;
+			transform: rotate(-90deg);
+			-webkit-transform-origin: 0% 0%;
+			-webkit-transform: rotate(-90deg);
+			-moz-transform: rotate(-90deg);
+		}
+
+		&.toplabel {
+			display: block;
+			height: 0;
+			position: relative;
+			top: -1.1em;
+			left: 10px;
+		}
+	}
+
 	#route-seq {
 		background-color: transparent;
 	}
 
 	>div {
-		margin-bottom: 10px;
+		margin-bottom: 25px;
 	}
 	//.row;
 
