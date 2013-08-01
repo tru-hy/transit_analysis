@@ -247,7 +247,7 @@ class TransAnal.StopSeqPlot
 		root.selectAll('.bar')
 		.transition().duration(dur).delay(delay)
 		.attr('width', (d) -> (x.width(key d)-barmargin))
-		.attr('opacity', (d) -> (not d.active ? false)*1.0)
+		#.attr('opacity', (d) -> (not d.active ? false)*1.0)
 		
 		root.selectAll('.binlabel')
 		.transition().duration(dur).delay(delay)
@@ -411,11 +411,11 @@ class TransAnal.StopSeqPlot
 		
 		pin = (d) ->
 			d.pinned = true
-			activate d
+			activate d, opts
 
 		unpin = (d) ->
 			d.pinned = false
-			deactivate d
+			deactivate d, opts
 
 		activate = (d) =>
 			ew = x.expand d.stop_id
@@ -426,6 +426,8 @@ class TransAnal.StopSeqPlot
 			
 			el = bins.filter((bd) -> bd == d)[0][0]
 			@_redraw(act_el: el)
+
+
 
 		deactivate = (d) =>
 			return if d.pinned ? false
