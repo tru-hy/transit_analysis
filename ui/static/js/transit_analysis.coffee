@@ -537,10 +537,10 @@ class TransAnal.StopSeqPlot
 		.attr('height', (d) -> stat(d))
 
 		bins.on "click", (d) ->
-			if d.pinned ? false
-				unpin d
-				return
-			pin d
+			#if d.pinned ? false
+			#	unpin d
+			#	return
+			#pin d
 			cursor.setActiveRange [d[0].distance+50, d[1].distance-50]
 
 		
