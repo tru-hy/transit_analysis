@@ -411,11 +411,11 @@ class TransAnal.StopSeqPlot
 		
 		pin = (d) ->
 			d.pinned = true
-			activate d, opts
+			activate d
 
 		unpin = (d) ->
 			d.pinned = false
-			deactivate d, opts
+			deactivate d
 
 		activate = (d) =>
 			ew = x.expand d.stop_id
@@ -426,7 +426,21 @@ class TransAnal.StopSeqPlot
 			
 			el = bins.filter((bd) -> bd == d)[0][0]
 			@_redraw(act_el: el)
+		
+		@_top_pinned = false
+		@pin_top_toggle = =>
+			if @_top_pinned
+				@unpin_top()
+			else
+				@pin_top()
 
+		@pin_top = =>
+			@_top_pinned = true
+			pin d for d in stops
+		
+		@unpin_top = =>
+			@_top_pinned = false
+			unpin d for d in stops
 
 
 		deactivate = (d) =>
@@ -438,6 +452,7 @@ class TransAnal.StopSeqPlot
 			d.label_opacity = 0.0
 			@_redraw(dur: 200)
 
+		
 		bins.on "mouseover", (d, args...) -> activate d, @, args...
 		bins.on "mouseout", deactivate
 	
@@ -489,10 +504,27 @@ class TransAnal.StopSeqPlot
 				
 		pin = (d) ->
 			d.pinned = true
+			activate d
 
 		unpin = (d) ->
 			d.pinned = false
 			deactivate d
+
+		
+		@pin_bottom = ->
+			pin d for d in gaps
+			@_bottom_pinned = true
+
+		@unpin_bottom = ->
+			unpin d for d in gaps
+			@_bottom_pinned = false
+		
+		@_bottom_pinned = false
+		@pin_bottom_toggle = =>
+			if @_bottom_pinned
+				@unpin_bottom()
+			else
+				@pin_bottom()
 
 		activate = (d) =>
 			ew = x.expand d[0].stop_id
