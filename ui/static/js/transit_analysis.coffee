@@ -504,7 +504,6 @@ class TransAnal.StopSeqPlot
 				
 		pin = (d) ->
 			d.pinned = true
-			activate d
 
 		unpin = (d) ->
 			d.pinned = false

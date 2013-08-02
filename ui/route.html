@@ -79,7 +79,6 @@ find_close_valid = (a, idx, dir=1, thres=100) ->
 	v = funcs[1] a, idx, thres
 
 clip_linestring = (bbox, coords, dists) ->
-	#console.log Trusas.clipped_linestrings(bbox, coords, dists)
 	contains = (c) ->
 		return false if c[0] < bbox[0][0]
 		return false if c[0] > bbox[1][0]
@@ -220,14 +219,19 @@ _setup_map = (ctrl) ->
 			subpath = ctrl.cursorpath rng...
 			extent = Trusas.coords_extent subpath
 			route_map.set_extent extent
+			route_map.set_active_path subpath
 		
 		ignore_next_range = false
 		$(ctrl.cursor).on "activeRangeChange", (e, rng) ->
+			# TODO: Don't calculate subpath twice
+			subpath = ctrl.cursorpath rng...
+			route_map.set_active_path subpath
 			if ignore_next_range
 				ignore_next_range = false
 				return
 				
 			extent_setup rng
+
 		# TODO: For some reason this fails if done too early,
 		# so a hack.
 		setTimeout (-> extent_setup ctrl.cursor.getActiveRange()), 100
@@ -239,7 +243,7 @@ _setup_map = (ctrl) ->
 			route_map.set_hover coords
 		
 		route_map.onmove (ext) ->
-			rng = clip_linestring ext,
+			rng = Trusas.longest_clipped_linestring ext,
 				ctrl.route.coordinates,
 				ctrl.route.distances
 			if rng[0] != rng[0]
