@@ -78,6 +78,46 @@ find_close_valid = (a, idx, dir=1, thres=100) ->
 	return v if v == v
 	v = funcs[1] a, idx, thres
 
+clip_linestring = (bbox, coords, dists) ->
+	#console.log Trusas.clipped_linestrings(bbox, coords, dists)
+	contains = (c) ->
+		return false if c[0] < bbox[0][0]
+		return false if c[0] > bbox[1][0]
+		return false if c[1] < bbox[0][1]
+		return false if c[1] > bbox[1][1]
+		return true
+	
+	contained = []
+	i = 0
+	n = coords.length
+	while i < n
+		if not contains(coords[i])
+			++i; continue
+		span = []
+		contained.push span
+		while i < n
+			break if not contains(coords[i])
+			span.push i
+			++i
+	
+	if contained.length == 0
+		return [NaN, NaN]
+	
+	# TODO: Interpolate!
+	maxspan = []
+	maxlen = -1
+	for span in contained
+		s = span[0]
+		e = span[span.length-1]
+		len = dists[e] - dists[s]
+		if len > maxlen
+			maxlen = len
+			maxspan = [dists[s], dists[e]]
+	
+	return maxspan
+	
+
+
 class DataController
 	constructor: (@con) ->
 		
@@ -181,17 +221,33 @@ _setup_map = (ctrl) ->
 			extent = Trusas.coords_extent subpath
 			route_map.set_extent extent
 		
-		$(ctrl.cursor).on "activeRangeChange", (e, rng) -> extent_setup rng
+		ignore_next_range = false
+		$(ctrl.cursor).on "activeRangeChange", (e, rng) ->
+			if ignore_next_range
+				ignore_next_range = false
+				return
+				
+			extent_setup rng
 		# TODO: For some reason this fails if done too early,
 		# so a hack.
 		setTimeout (-> extent_setup ctrl.cursor.getActiveRange()), 100
-
+		
 		$(ctrl.cursor).on "hoverPositionChange", (e, pos) ->
 			coords = ctrl.pos_to_coords pos
 			if not coords[0]?
 				coords = undefined
 			route_map.set_hover coords
-
+		
+		route_map.onmove (ext) ->
+			rng = clip_linestring ext,
+				ctrl.route.coordinates,
+				ctrl.route.distances
+			if rng[0] != rng[0]
+				rng = ctrl.cursor.getAxisRange()
+			# Ignore the next range change to avoid
+			# free scrolling of the map
+			ignore_next_range = true
+			ctrl.cursor.setActiveRange rng
 
 _setup_plots = (ctrl) ->
 	stats = ctrl.speed_stats
