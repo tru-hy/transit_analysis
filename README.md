@@ -61,7 +61,7 @@ Currently a City of Tampere's SIRI realtime data is the only live data
 format supported. To import it, run
 
     cd utils/siri
-    cat <siri dump file> |PYTHONPATH=../../.. ./siri_db_load.bash ../schema_adapters/tampere.py
+    cat <siri dump file> |PYTHONPATH=../../../ ./siri_dump_parse.py load ../schema_adapters/tampere.py
 
 *NOTE* The datasets are quite large and thus this will take quite a while.
 Especially as the parsing isn't as efficient as it could.

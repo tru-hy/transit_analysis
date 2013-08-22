@@ -29,39 +29,45 @@ def to_progress_inplace(dist):
 			maxseen = dist[i]
 
 
-def get_shape_departures(db, shape, override):
+def get_shape_departures(db, shape):
 	conn = db.bind.raw_connection()
 	dep_cursor = conn.cursor(cursor_factory=NamedTupleCursor)
 	
-	dep_cursor = conn.cursor(cursor_factory=NamedTupleCursor)
+	# Select "finalised" departures
+	# which haven't been processed.
+	to_process = """
+	select departure_id from coordinate_measurement
+	where finalized = true
+	"""
+
 	q = """
-		select *
-		from transit_departure
-		right join coordinate_trace on trace=id
-		where shape=%s
-		"""
-	if not override:
-		q += "and routed_trace is null"
+	select *
+	from transit_departure
+	where departure_id in (%s)
+	and shape=%%s
+	and routed_trace isnull
+	"""%(to_process,)
 	
 	dep_cursor.execute(q, (shape,))
 		
-	coord_cur = conn.cursor()
+	coord_cur = conn.cursor(cursor_factory=NamedTupleCursor)
 	for departure in dep_cursor:
 		coord_cur.execute("""
-			select distinct extract(epoch from time-%s) as ts,
-				latitude, longitude
+			select
+			time, latitude, longitude, start_time
 			from coordinate_measurement
 			where
-				source=%s AND
-				time between %s and %s AND
-				latitude != 0 AND
-				longitude != 0
-			order by ts
-			""", (departure.departure_time,
-				departure.source,
-				departure.start_time,
-				departure.end_time))
-		yield departure, coord_cur.fetchall()
+				departure_id=%s
+			limit 1;
+			""", (departure.departure_id,)
+			)
+		data = iter(coord_cur).next()
+		# Make the timestamp to point to the scheduled
+		# departure time.
+		offset = (data.start_time - departure.departure_time).total_seconds()
+		time = [t+offset for t in data.time]
+		
+		yield departure, zip(time, data.latitude, data.longitude)
 
 
 class RouteFilter:
@@ -73,6 +79,8 @@ class RouteFilter:
 	
 	def __call__(self, ts, coords, departure, **kwargs):
 		ts, coords = self.matcher(ts, coords)
+		if len(ts) < 10:
+			return None
 	
 		dist_interp = scipy.interpolate.interp1d(ts, coords)
 		new_ts = np.arange(ts[0], ts[-1], self.new_dt)
@@ -101,7 +109,7 @@ class RouteFilter:
 		return record
 
 
-def filter_shape_routes(db, shape, override, filter_cls=RouteFilter):
+def filter_shape_routes(db, shape, filter_cls=RouteFilter):
 	conn = db.bind.raw_connection()
 	
 	
@@ -116,13 +124,19 @@ def filter_shape_routes(db, shape, override, filter_cls=RouteFilter):
 	
 	coord_cur = conn.cursor()
 	
-	for i, (departure, coordinates) in enumerate(get_shape_departures(db, shape, override)):
+	for i, (departure, coordinates) in enumerate(get_shape_departures(db, shape)):
 		if len(coordinates) < 10: continue
 		ts, lat, lon = np.array(coordinates).T
 		cart = np.array(zip(*coord_proj(lon, lat)))
-		
+		# The dumper shouldn't put out identical timestamps, but
+		# apparently it does.
+		valid = np.flatnonzero(np.diff(ts) > 0)
 		try:
-			yield departure, routefilter(ts, cart, departure=departure)
+			result = routefilter(ts[valid], cart[valid], departure=departure)
+			if not result:
+				continue
+
+			yield departure, result
 		except RouteException:
 			continue
 
@@ -142,42 +156,42 @@ def insert_routed_trace(routed_tbl, departure_tbl, mapping):
 		where(departure_tbl.c.departure_id == departure.departure_id).\
 		values(routed_trace=result.inserted_primary_key[0]).execute()
 
-def _fetch_shapes(conn, override):
+def _fetch_shapes(conn):
 	cur = conn.cursor()
+	# Select shapes for which there is data to process
 	q = """
-		select distinct shape
-		from transit_departure
-		where trace notnull
-		"""
-	if not override:
-		q += "and routed_trace isnull"
+	select distinct shape
+	from transit_departure
+	where routed_trace isnull
+	and departure_id in
+		(select distinct departure_id from coordinate_measurement where finalized = true);
+	"""
 	cur.execute(q)
-	
 	return [r[0] for r in cur]
 
 
-def filter_routes(uri=schema.default_uri, shape=None, override=False):
+def filter_routes(uri=schema.default_uri, shape=None):
 	db = schema.connect(uri)
 	conn = db.bind.raw_connection()
 	
 	if shape is not None:
 		shapes = [shape]
 	else:
-		shapes = list(_fetch_shapes(conn, override))
+		shapes = list(_fetch_shapes(conn))
 	
 	routed_tbl = db.tables['routed_trace']
 	departure_tbl = db.tables['transit_departure']
 	n_shapes = len(shapes)
 	for i, shape in enumerate(shapes):
 		print >>sys.stderr, "Processing %i/%i shapes"%(i+1, n_shapes)
-		mappings = filter_shape_routes(db, shape, override)
+		mappings = filter_shape_routes(db, shape)
 		for mapping in mappings:
 			insert_routed_trace(routed_tbl, departure_tbl, mapping)
 
-def plot_shape_route_filtering(db, shape, override):
+def plot_shape_route_filtering(db, shape):
 	import matplotlib.pyplot as plt
 	
-	res = filter_shape_routes(db, shape, override)
+	res = filter_shape_routes(db, shape)
 	distgrid = None
 	i = -1
 	for i, (departure, record) in enumerate(res):
@@ -185,11 +199,12 @@ def plot_shape_route_filtering(db, shape, override):
 			distgrid = np.arange(0,
 				record.distance_bin_width*len(record.time_at_distance_grid),
 				record.distance_bin_width)
-		plt.plot(distgrid[1:], np.diff(record.time_at_distance_grid))
+		#plt.plot(distgrid, record.time_at_distance_grid)
+		plt.plot(distgrid[1:], np.diff(distgrid)/np.diff(record.time_at_distance_grid), color='black', alpha=0.2)
 	plt.show()
 	return i + 1
 
-def plot_route_filtering(uri=schema.default_uri, shape=None, override=True):
+def plot_route_filtering(uri=schema.default_uri, shape=None):
 	"""Used mainly for testing"""
 	import time
 
@@ -199,10 +214,10 @@ def plot_route_filtering(uri=schema.default_uri, shape=None, override=True):
 	if shape is not None:
 		shapes = [shape]
 	else:
-		shapes = list(_fetch_shapes(conn, override))
+		shapes = list(_fetch_shapes(conn,))
 	
 	for shape in shapes:
-		plot_shape_route_filtering(db, shape, override)
+		plot_shape_route_filtering(db, shape)
 
 def filter_stop_sequences(uri=schema.default_uri):
 	db = schema.connect(uri)

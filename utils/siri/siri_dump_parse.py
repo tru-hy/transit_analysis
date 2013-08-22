@@ -7,23 +7,22 @@
 import sys
 import re
 import time
-
-try:
-	from lxml import etree
-except ImportError:
-	import xml.etree.ElementTree as etree
-
+from itertools import chain, imap
+from collections import namedtuple
 from xml.parsers import expat
 
 from transit_analysis.utils.dumping import csvmapper, TraceTracker
-from transit_analysis.recordtypes import *
+#from transit_analysis.recordtypes import *
 
 ns_stripper = re.compile(r'xmlns.*?=["\'].*?["\']')
+doctype_stripper = re.compile(r'<\?.*?\?>')
+
+# TODO: Could be a lot faster!
 
 class ActivityParser:
 	def __init__(self):
 		self.reset_parser()
-
+		
 	def reset_parser(self):
 		self.parser = expat.ParserCreate()
 		self.parser.StartElementHandler = self.start
@@ -56,10 +55,12 @@ class ActivityParser:
 		except expat.ExpatError:
 			pass
 		act = self.activities
+		# TODO: See if there's a way to reset
+		# expat without creating a new parser, which
+		# seems to be quite slow
 		self.reset_parser()
 		return act
-	
-	
+
 
 def iterate_activities(infile):
 	parser = ActivityParser()
@@ -67,15 +68,108 @@ def iterate_activities(infile):
 		if raw.strip() == "": continue
 		# Nobody uses this crap
 		raw = ns_stripper.sub('', raw)
+		#raw = doctype_stripper.sub('', raw, count=1)
 		#root = etree.fromstring(raw)
 		for act in parser.parse(raw):
 			yield act
 		#for act in root.iter("VehicleActivity"):
 		#	yield act
 
-def to_csv(adapter, trace_output="", timezone="", dump_departure=False,
-		no_measurements=False):
+def pop_unfinished_traces(con):
+	q = """
+	delete from coordinate_measurement
+	where finalized = false
+	returning *
+	"""
+
+	traces = {}
+	for row in con.execute(q):
+		traces[(row.departure_id, row.source)] = row
+	
+	return traces
+
+class TraceLoader:
+	def __init__(self, con):
+		self.finished_check_interval = 60*10
+		self.finished_threshold = 60*60
+		self.previous_check = None
+
+		self.con = con
+		self.traces = pop_unfinished_traces(con)
+		self.current_time = None
+		
+	
+	def __call__(self, departure, measurement):
+		source, (ts, lat, lon, bearing) = measurement
+		self.current_time = ts
+		if source == "": return
+
+		key = departure, source
+		if key not in self.traces:
+			self.traces[key] = dict(
+				departure_id=departure,
+				source=source,
+				start_time=ts,
+				time=[],
+				latitude=[],
+				longitude=[],
+				bearing=[],
+				finalized=False)
+
+		trace = self.traces[key]
+		trace['time'].append((ts - trace['start_time']).total_seconds())
+		trace['latitude'].append(lat)
+		trace['longitude'].append(lon)
+		trace['bearing'].append(bearing)
+
+		if (self.previous_check is None or
+		   (ts - self.previous_check).total_seconds() > self.finished_check_interval):
+			self.previous_check = ts
+			self._handle_finished()
+
+	def _insert(self, trace):
+		d, s = trace['departure_id'], trace['source']
+		q = """
+		select count(*) from coordinate_measurement
+		where departure_id=%s and source=%s"""
+		if self.con.execute(q, [[d, s]]).fetchone()[0]:
+			print >>sys.stderr, ("Ignoring duplicate trace (%s, %s, %i rows)"%(d, s, len(trace['time']))).encode('utf-8')
+
+		vals = trace.values()
+		q = "insert into coordinate_measurement (" + ",".join(trace.keys()) + ")"
+		q += " values (" +",".join(['%s']*len(vals)) + ")"
+		
+		
+		self.con.execute(q, [vals])
+
+	def _is_finished(self, trace):
+		time_from_start = (self.current_time - trace['start_time']).total_seconds()
+		return time_from_start - trace['time'][-1] > self.finished_threshold
+
+	def _handle_finished(self):
+		for key in self.traces.keys():
+			trace = self.traces[key]
+			tdiff = self.current_time - trace['start_time']
+			if not self._is_finished(trace):
+				continue
+
+			if tdiff.total_seconds() + trace['time'][-1] < 2*60*60:
+				continue
+			
+			trace['finalized'] = True
+			self._insert(trace)
+			del self.traces[key]
+	
+				
+	def finish(self):
+		for trace in self.traces.iteritems():
+			self._insert(trace)
+		self.traces = {}
+		
+
+def load(adapter, timezone=""):
 	import imp
+	from transit_analysis import schema
 	adapter = imp.load_source("adapter", adapter)
 	
 	kwargs = {}
@@ -83,44 +177,22 @@ def to_csv(adapter, trace_output="", timezone="", dump_departure=False,
 		args['timezone'] = timezone
 	handler = adapter.SiriDepartureMeasurement(**kwargs)
 
-	if trace_output:
-		trace_output = open(trace_output, 'w')
-		def on_trace(src, departure, start, end):
-			trace_id = "transit_departure/"+departure
-			record = coordinate_trace(
-				id=trace_id,
-				source=src,
-				start_time=start,
-				end_time=end)
-			record_str = "	".join(map(csvmapper, record))
-			trace_output.write(record_str.encode('utf-8'))
-			trace_output.write('\n')
-			trace_output.flush()
+	con = schema.connect().bind.connect()
+	with con.begin() as transaction:
+		loader = TraceLoader(con)
 	
-		traces = TraceTracker(on_trace)
-	else:
-		traces = lambda *x: None
-
-	for act in iterate_activities(sys.stdin):
-		try:
-			departure, measurement = handler(act)
-		except KeyError:
-			continue
-		traces(departure, measurement)
-		if no_measurements: continue
-		line = "\t".join(map(csvmapper, handler(act)[1]))
-		sys.stdout.write(line.encode("utf-8"))
-		if dump_departure:
-			sys.stdout.write("\t")
-			sys.stdout.write(departure.encode("utf-8"))
-		sys.stdout.write('\n')
-		sys.stdout.flush()
-	traces.finalize()
+		for act in iterate_activities(sys.stdin):
+			try:
+				departure, measurement = handler(act)
+			except KeyError:
+				continue
+			loader(departure, measurement)
+		
+		transaction.commit()
 
 if __name__ == '__main__':
 	import imp
 	import argh
 	parser = argh.ArghParser()
-	parser.add_commands([to_csv])
+	parser.add_commands([load])
 	parser.dispatch()
-	#iterate_records(sys.stdin)

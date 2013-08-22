@@ -6,13 +6,6 @@ from sqlalchemy.dialects.postgresql import HSTORE, ARRAY
 import config
 metadata = MetaData()
 
-Table("coordinate_trace", metadata,
-	Column('id', String(255), primary_key=True),
-	Column('source', String(255)),
-	Column('start_time', DateTime),
-	Column('end_time', DateTime)
-	)
-
 Table("routed_trace", metadata,
 	Column('id', Integer, Sequence("routed_trace_id_seq"),
 		primary_key=True),
@@ -26,15 +19,18 @@ Table("routed_trace", metadata,
 	)
 
 Table("coordinate_measurement", metadata,
-	Column('source', String(255), index=True),
-	Column('time', DateTime, index=True),
-	Index('source_time_idx', 'source', 'time'),
-	Column('latitude', Float),
-	Column('longitude', Float),
-	Column('altitude', Float),
-	Column('bearing', Float),
-	Column('velocity', Float),
+	Column('departure_id', String(255), primary_key=True, index=True),
+	Column('source', String(255), primary_key=True, index=True),
+	Column('start_time', DateTime),
+	Column('time', ARRAY(Float)),
+	Column('latitude', ARRAY(Float)),
+	Column('longitude', ARRAY(Float)),
+	Column('altitude', ARRAY(Float)),
+	Column('bearing', ARRAY(Float)),
+	Column('velocity', ARRAY(Float)),
+	Column('finalized', Boolean),
 	)
+
 
 Table("transit_departure", metadata,
 	Column('departure_id', String(255), primary_key=True),
@@ -46,10 +42,10 @@ Table("transit_departure", metadata,
 	Column('departure_time', DateTime),
 	Column('shape', String(255)),
 	Index('departure_shape_idx', 'shape'),
-	Column('trace', String(255)),
 	Column('routed_trace', Integer,
-		ForeignKey("routed_trace.id"),
-		nullable=True),
+		ForeignKey("routed_trace.id", ondelete="SET NULL"),
+		nullable=True,
+		index=True),
 	Column('attributes', HSTORE),
 	Column('schedule_id', String(255))
 	)

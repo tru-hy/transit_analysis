@@ -81,7 +81,7 @@ class SiriDepartureMeasurement:
 		source = act["VehicleRef"].strip()
 		
 		if timestamp not in self.largetimecache:
-			ts = fastisots(timestamp).isoformat()
+			ts = fastisots(timestamp)
 			self.largetimecache[timestamp] = ts
 			if len(self.largetimecache) > 20:
 				self.largetimecache.popitem(False)
@@ -92,14 +92,15 @@ class SiriDepartureMeasurement:
 
 		
 
-		measurement = coordinate_measurement(
-			source=source,
-			time=timestamp,
-			latitude=latitude,
-			longitude=longitude,
-			bearing=bearing)
+		#measurement = raw_coordinate_measurement(
+		#	departure_id=self.departure(act),
+		#	source=source,
+		#	time=timestamp,
+		#	latitude=latitude,
+		#	longitude=longitude,
+		#	bearing=bearing)
 
-		return measurement
+		return source, (timestamp, latitude, longitude, bearing)
 	
 	def __call__(self, act):
 		departure_id = self.departure(act)
@@ -128,3 +129,4 @@ class GtfsDeparture:
 			shape=dep.shape_id,
 			departure_time=dep.departure_time,
 			schedule_id=dep.trip_id)
+

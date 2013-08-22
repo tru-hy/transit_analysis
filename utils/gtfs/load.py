@@ -126,7 +126,6 @@ def transit_departure(gtfs_dir, adapter, **kwargs):
 	timezone = adapter.timezone
 	departures = GtfsDepartures(gtfs_dir, timezone)
 	handler = adapter.GtfsDeparture(departures)
-	trace_idx = rec.transit_departure._fields.index('trace')
 	seen_ids = {}
 	
 	for departure in departures:
@@ -140,8 +139,6 @@ def transit_departure(gtfs_dir, adapter, **kwargs):
 		seen_ids[depid] = True
 
 		record = list(record)
-		if record[trace_idx] is None:
-			record[trace_idx] = "transit_departure/"+depid
 		yield rec.transit_departure(*record)
 
 if __name__ == '__main__':
