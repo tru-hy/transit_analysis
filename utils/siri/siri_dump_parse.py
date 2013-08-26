@@ -134,6 +134,7 @@ class TraceLoader:
 		where departure_id=%s and source=%s"""
 		if self.con.execute(q, [[d, s]]).fetchone()[0]:
 			print >>sys.stderr, ("Ignoring duplicate trace (%s, %s, %i rows)"%(d, s, len(trace['time']))).encode('utf-8')
+			return
 
 		vals = trace.values()
 		q = "insert into coordinate_measurement (" + ",".join(trace.keys()) + ")"
@@ -164,6 +165,7 @@ class TraceLoader:
 	def finish(self):
 		for trace in self.traces.iteritems():
 			self._insert(trace)
+			del self.traces[key]
 		self.traces = {}
 		
 
