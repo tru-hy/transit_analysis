@@ -339,7 +339,13 @@ _setup_plots = (ctrl) ->
 		for v in durarr
 			continue if v != v
 			durations.push v
-		[binsize, binned] = histogram(durations)
+		valid = deoutlier(durations)[0]
+		[binsize, binned] = histogram(valid)
+		n = valid.length
+		for i in [0...binned.length]
+			inbin = binned[i][1]
+			binned[i][1] = inbin/n*100
+
 		$.plot $("#route-duration"), [{data: binned, color: "black"}],
 			bars:
 				show: true
@@ -349,6 +355,12 @@ _setup_plots = (ctrl) ->
 	ctrl.span_durations.$update.on plot_durations
 
 	plot_dur_tod = (durarr) ->
+		durations = []
+		durations = []
+		for v in durarr
+			continue if v != v
+			durations.push v
+		durarr = deoutlier(durations)[0]
 		durations = []
 		for i in [0...durarr.length]
 			date = new Date ctrl.departures[i].departure_time
@@ -406,7 +418,7 @@ $ ->
 	<div class="col-6" style="height: 200px;">
 		<div id="route-duration"></div>
 		<axislabel class="xlabel">Time spent</axislabel>
-		<axislabel class="ylabel">Number of drives</axislabel>
+		<axislabel class="ylabel">Share of drives (%)</axislabel>
 
 	</div>
 	<div class="col-6" style="height: 200px;">

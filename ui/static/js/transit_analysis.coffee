@@ -638,5 +638,19 @@ class TransAnal.StopSeqPlot
 		bins.on "mouseover", activate
 		bins.on "mouseout", deactivate
 
+@deoutlier = (values) ->
+	inliers = []
+	outliers = []
+	[low, high] = science.stats.quantiles values, [.1, .9]
+	iqr = high - low
+	min = low - iqr*1.5
+	max = high + iqr*1.5
+	for i in [0...values.length]
+		x = values[i]
+		if x < min or x > max
+			outliers.push x
+		else
+			inliers.push x
 
-###
+	return [inliers, outliers]
+
