@@ -210,7 +210,28 @@ _setup = (ctrl) ->
 
 _setup_map = (ctrl) ->
 	Trusas.Map.Create($("#route-map")[0]).done (route_map) ->
-		route_map.add_route ctrl.route.coordinates
+		stats = ctrl.speed_stats
+		end_distance = ctrl.distance_grid[ctrl.distance_grid.length-1]
+		norm_distance = []
+		for v in ctrl.distance_grid
+			norm_distance.push v/end_distance
+
+		#stat = (stats.lowq[i] - stats.highq[i] for i in [0...stats.highq.length])
+		stat = stats.lowq
+		#stat = (Math.log v + 1.0 for v in stat)
+		validstat = (v for v in stat when v == v)
+		min = Math.min validstat...
+		max = Math.max validstat...
+		rng = max - min
+		norm_stat = []
+		for v in stat
+			norm_stat.push (v - min)/rng
+
+		medinterp = Trusas.interp1d norm_distance, norm_stat
+		route_map.add_colored_route ctrl.route.coordinates, medinterp,
+			10.0/end_distance
+
+
 
 		for stop in ctrl.stops
 			route_map.add_marker [stop.latitude, stop.longitude]
@@ -346,10 +367,15 @@ _setup_plots = (ctrl) ->
 			inbin = binned[i][1]
 			binned[i][1] = inbin/n*100
 
-		$.plot $("#route-duration"), [{data: binned, color: "black"}],
+		$.plot $("#route-duration"), [{
+			data: binned,
+			color: "black",
+			}],
 			bars:
 				show: true
 				barWidth: binsize
+				lineWidth: 0
+				fill: 0.5
 			xaxis:
 				tickFormatter: format_seconds
 	ctrl.span_durations.$update.on plot_durations
@@ -369,10 +395,11 @@ _setup_plots = (ctrl) ->
 
 		$.plot $("#duration-by-tod"), [{data: durations, color: "rgb(0,0,0,0.5)"}],
 			series:
+				shadowSize: 0
 				points:
 					radius: 3
 					show: true
-					fill: true
+					fill: 0.5
 					fillColor: "black"
 					lineWidth: 0
 			xaxis:
