@@ -1,7 +1,7 @@
 # Transit Analysis
 
 A software system for visualizing and analyzing transit data.
-Under heavy development.
+Under development.
 
 ## Getting started
 
@@ -46,6 +46,13 @@ All GTFS data that don't directly map with live data can be loaded with:
     PYTHONPATH=../../../ ./load_common.bash <gtfs directory>
 
 Where `<gtfs directory>` is directory containing the gtfs .txt files.
+
+The system also (currently) requires version of shapes.txt which has ids specifying
+the (OSM) nodes corresponding to the shape points. This can be generated
+using [gtfs-shape-mapfit](https://github.com/tru-hy/gtfs_shape_mapfit) and imported
+with:
+
+    PYTHONPATH=../../../ ./merge.bash coordinate_shape <path to noded shapes.txt>
 
 Departures, meaning the physical drives, which are mapped to live
 data require additional mangling as the live data is not necessarily

@@ -19,34 +19,41 @@ def csv(func):
 	csv_commands.append(csv_dump(func))
 	return func
 @csv
-def coordinate_shape(gtfs_dir, **kwargs):
+def coordinate_shape(noded_shapes, **kwargs):
 	import numpy as np
 	import pyproj
 	proj = pyproj.Proj(init=coordinate_projection)
-	filepath = os.path.join(gtfs_dir, 'shapes.txt')
+	filepath = noded_shapes
 	shapes = {}
 	for row in NamedTupleCsvReader(bomopen(filepath)):
 		if row.shape_id not in shapes:
 			shapes[row.shape_id] = []
+
+		if row.node_id != "":
+			node_id = row.node_id
+		else:
+			node_id = None
 		shapes[row.shape_id].append((
 			int(row.shape_pt_sequence),
 			float(row.shape_pt_lat),
-			float(row.shape_pt_lon)))
+			float(row.shape_pt_lon),
+			node_id))
 	
 	for shape_id, coords in shapes.iteritems():
 		# Could use a heap if this causes
 		# performance problems (probably wont)
 		coords.sort()
-		lat, lon = zip(*coords)[1:]
+		lat, lon, nodes = zip(*coords)[1:]
 		latlon = zip(lat, lon)
-
+		
 		projected = np.array(proj(lon, lat)).T
 		diffs = np.sqrt(np.sum(np.diff(projected, axis=0)**2, axis=1))
 		distances = [0.0] + list(np.cumsum(diffs))
 		yield rec.coordinate_shape(
 			shape=shape_id,
 			coordinates=latlon,
-			distances=distances)
+			distances=distances,
+			node_ids=nodes)
 
 @csv
 def transit_stop(gtfs_dir, **kwargs):

@@ -115,7 +115,7 @@ def filter_shape_routes(db, shape, filter_cls=RouteFilter):
 	
 	shapetbl = db.tables['coordinate_shape']
 	shape_data = shapetbl.select().where(shapetbl.c.shape==shape).execute()
-	_, shape_data, shape_dist = shape_data.fetchone()
+	_, shape_data, shape_dist, nodes = shape_data.fetchone()
 	
 	
 	lat, lon = zip(*shape_data)
@@ -267,8 +267,7 @@ def filter_shape_stop_sequences(db, shape):
 
 	tbl = db.tables['transit_shape_stop']
 	tbl.update().values(distances=distances).where(tbl.c.shape_id==shape.shape).execute()
-		
-	
+
 
 
 if __name__ == '__main__':

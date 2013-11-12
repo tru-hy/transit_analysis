@@ -2,7 +2,7 @@
 
 export PGPASSWORD=transit
 
-query=`python merge_command.py $1`
+query=`python2 merge_command.py $1`
 query=`echo $query |tr \\\n " "`
 
 cmd=`echo $1 |tr _ -`-csv

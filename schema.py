@@ -73,7 +73,8 @@ Table("transit_schedule_stop", metadata,
 Table("coordinate_shape", metadata,
 	Column('shape', String(255), primary_key=True),
 	Column('coordinates', ARRAY(Float, dimensions=2)),
-	Column('distances', ARRAY(Float))
+	Column('distances', ARRAY(Float)),
+	Column('node_ids', ARRAY(String(255))),
 	)
 
 
