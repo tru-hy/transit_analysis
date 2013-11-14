@@ -164,6 +164,14 @@ _setup_map = (ctrl) ->
 			for n in nodes
 				el = $("##{n}")
 				el.attr("class", "nodepoint selected_nodepoint")
+
+		ctrl.selected_route.changed.on (route) ->
+			route_map.remove_layer "selected_route"
+			return if not route
+			coords = (graph.nodes[k] for k in route)
+
+			route_map.add_route coords, "selected_route",
+				(style) -> style.attr("class", "selected_route_line")
 			
 
 _setup_table = (ctrl) ->
@@ -214,18 +222,37 @@ _setup_table = (ctrl) ->
 		grid.invalidateRows(args.rows)
 		grid.render()
 
-###
 _setup_router = (ctrl) ->
 	edges = {}
 	for [from, to, data] in ctrl.graph.edges
-		edges[e[0]][e[1]] = data.distance
-###
+		edges[from] ?= {}
+		edges[from][to] = data.distance
+	
+	ctrl.selected_nodes.changed.on (nodes) ->
+		if nodes.length < 2
+			ctrl.selected_route.set null
+			return
+		
+		path = []
+		for i in [0...nodes.length-1]
+			subpath = dijkstra_shortest_path edges, nodes[i], nodes[i+1]
+			if not subpath
+				path = null
+				break
 
+			for p in subpath
+				path.push p
+			path.pop()
+		if path
+			path.push nodes[nodes.length-1]
+		ctrl.selected_route.set path
+	
 $ ->
 	Controller.Create().done (ctrl) ->
+		window.debugctrl = ctrl
 		_setup_map ctrl
-		_setup_table ctrl
-		#_setup_router ctrl
+		#_setup_table ctrl
+		_setup_router ctrl
 
 </script>
 
