@@ -6,6 +6,10 @@ from collections import OrderedDict
 import urlparse
 
 import sqlalchemy as sqa
+import networkx as nx
+import numpy as np
+import scipy.stats
+
 
 from ext.trusas_server import session_server, providers, serialize
 import recordtypes
@@ -106,6 +110,39 @@ def coordinate_shape(db, shape):
 	row = OrderedDict(row.items())
 	return StringIO(serialize.dumps(row))
 
+@db_provider()
+def route_graph_edges(db, **kwargs):
+	db = schema.connect()
+	
+	shapes = db.bind.execute("""
+		select * from coordinate_shape
+		""")
+	
+	graph = nx.DiGraph()
+	
+	positions = {}
+	for shape in shapes:
+		nodes = shape['node_ids'][1:-1]
+		coords = shape['coordinates'][1:-1]
+		distances = shape['distances'][1:-1]
+		for i in range(len(nodes)-1):
+			positions[nodes[i]] = coords[i]
+			s, e = nodes[i], nodes[i+1]
+			graph.add_edge(nodes[i], nodes[i+1])
+			edge = graph[s][e]
+			if "shapes" not in edge:
+				edge['shapes'] = list()
+			edge['shapes'].append(shape.shape)
+			edge['distance'] = distances[i+1] - distances[i]
+		positions[nodes[-1]] = coords[-1]
+	
+	out = {
+		'edges': graph.edges(data=True),
+		'nodes': positions
+		}
+	return serialize.dumps(out)
+
+
 def nocols(tbl, *exclude):
 	return [tbl.c[n] for (n) in tbl.c.keys() if n not in exclude]
 
@@ -147,8 +184,6 @@ def get_departure_traces(db, shape, route_variant=None, direction=None):
 def departure_traces(db, **kwargs):
 	return resultoutput(get_departure_traces(db, **kwargs))
 
-import numpy as np
-import scipy.stats
 
 def axispercentile(values, percentiles):
 	# TODO: WOW, how slow is this!
@@ -327,7 +362,8 @@ def main(uri=schema.default_uri):
 		coordinate_shape(db),
 		coordinate_shapes(db),
 		departure_traces(db),
-		RouteStatisticsProvider(db)
+		RouteStatisticsProvider(db),
+		route_graph_edges(db)
 		]
 	
 	resources = session_server.ResourceServer(providers)

@@ -1,6 +1,7 @@
 <script type="text/javascript" src="static/js/jquery.js"></script>
 <script type="text/javascript" src="static/js/underscore.js"></script>
 <script type="text/javascript" src="static/js/coffee-script.js"></script>
+<script type="text/javascript" src="static/js/bean.js"></script>
 
 <script type="text/javascript" src="static/js/jquery.event.drag-2.2.js"></script>
 <script type="text/javascript" src="static/js/jquery-ui.js"></script>
@@ -14,63 +15,219 @@
 <link rel="stylesheet" href="static/css/slick.columnpicker.css" type="text/css"/>
 <link rel="stylesheet" href="static/css/slick-default-theme.css" type="text/css"/>
 
-<link rel="stylesheet" href="static/css/transit_analysis.css" type="text/css"/>
+<script type="text/javascript" src="static/js/polymaps.js"></script>
+<script type="text/javascript" src="/static/js/d3.v3.js"></script>
+
+<script type="text/coffeescript" src="static/js/trusas.core.coffee"></script>
+<script type="text/coffeescript" src="static/js/trusas.data.coffee"></script>
+
+<script type="text/coffeescript" src="static/js/trusas.map.coffee"></script>
+
+<script type="text/coffeescript" src="static/js/transit_analysis.coffee"></script>
+
+<script type="text/javascript" src="static/js/buckets.js"></script>
+<script type="text/coffeescript" src="static/js/dijkstra.coffee"></script>
+
+<link rel="stylesheet/less" href="static/css/transit_analysis.less" type="text/css"/>
+
+<script type="text/javascript" src="static/js/less-1.4.1.js"></script>
+
+<style type="text/css">
+/* SVG with less seems to work a bit randomly, so let's hack here */
+.route_select_map .nodepoint {
+	fill: black;
+}
+
+.route_select_map .nodepoint:hover {
+	stroke: red;
+	stroke-width: 4;
+}
+
+.route_select_map .selected_nodepoint {
+	fill: red;
+	stroke: red;
+	stroke-width: 3;
+}
+</style>
 
 <script type="text/coffeescript">
 route_link_template = _.template """
 <a href="<%= url %>" class="view-route-link">View</a>
 """
 
-$ ->
-	grid = null
-	dataView = null
-	$.getJSON 'resources/transit_routes.json', (data) ->
-		columns = ({id: n, field: n, name: n} \
-			for n of data[0] when n not in ['id'])
+class Signal
+	constructor: (@owner, @name) ->
+	
+	on: (cb) =>
+		bean.on @owner, @name, cb
+	off: (cb) =>
+		bean.off @owner, @name, cb
+	trigger: (args...) =>
+		bean.fire @owner, @name, args
+
+class SignalingValue
+	constructor: (@_value) ->
+		@changed = new Signal @, "changed"
+	
+	set: (@_value) =>
+		@changed.trigger @_value
+	
+	get: => @_value
+	
+class Controller
+	@Create: ->
+		routes = $.getJSON '/resources/transit_routes.json'
+		shapes = $.getJSON '/resources/coordinate_shapes.json'
+		graph = $.getJSON '/resources/route_graph_edges.json'
+		promise = $.Deferred()
+		$.when(routes, shapes, graph).done (args...) ->
+			args = (a[0] for a in args)
+			self = new Controller(args...)
+			promise.resolve self
+
+		return promise
+
+	constructor: (@routes, @shapes, @graph) ->
+		@selected_nodes = new SignalingValue([])
+		@selected_route = new SignalingValue()
 		
-		depcol = $.grep(columns, (e) -> e.id == 'departures')[0]
-		depcol['groupTotalsFormatter'] = (total, coldef) ->
-			return total.sum.departures
+
+_setup_map = (ctrl) ->
+	# Far from optimal
+	graph = ctrl.graph
+	
+	coords = []
+	ids = []
+
+	for k, v of graph.nodes
+		coords.push(v)
+		ids.push(k)
+	
+	
+	minc = [
+		_.min(coords, (x) -> x[0])[0]
+		_.min(coords, (x) -> x[1])[1]
+		]
+	
+	maxc = [
+		_.max(coords, (x) -> x[0])[0]
+		_.max(coords, (x) -> x[1])[1]
+		]
+	
+	selected_nodes = ctrl.selected_nodes
+	
+	Trusas.Map.Create($("#route_map")[0]).done (route_map) ->
+		extent = [minc, maxc]
+		route_map.set_extent(extent)
+		styler = (style) -> style
 		
-		routecol = $.grep(columns, (e) -> e.id == 'route_name')[0]
-		routecol['formatter'] = (args...) ->
-			row = args[4]
-			urlargs = _.pick row, 'route_variant', 'direction', 'shape'
-			url = "route.html?"+$.param urlargs
-			return route_link_template url: url
+		hook_events = (feat) ->
+			$el = $ feat.element
+			$el.attr "id", feat.data.id
+			
+			if selected_nodes.get().indexOf(feat.data.id) >= 0
+				$el.attr("class", "nodepoint selected_nodepoint")
+			else
+				$el.attr("class", "nodepoint")
+			#$el.mouseenter ->
+			#	$el
+			#	.attr("r", 9)
+			#$el.mouseleave ->
+			#	$el
+			#	.attr("r", 3)
+
+			$el.click ->
+				sel = selected_nodes.get()
+				id = $el.attr('id')
+				idx = sel.indexOf(id)
+				if idx >= 0
+					sel.splice(idx, 1)
+				else
+					sel.push id
+					
+				selected_nodes.set(sel)
+				
+				
+
+		onload = (opts) ->
+			for feat in opts.features
+				hook_events(feat)
+
+		layer = route_map.add_points(
+			coords
+			ids
+			styler
+			onload)
+
+		selected_nodes.changed.on (nodes) ->
+			$(".nodepoint").attr("class", "nodepoint")
+			for n in nodes
+				el = $("##{n}")
+				el.attr("class", "nodepoint selected_nodepoint")
 			
 
-		[columns[1], columns[0]] = [columns[0], columns[1]]
+_setup_table = (ctrl) ->
+	data = ctrl.routes
+	columns = ({id: n, field: n, name: n} \
+		for n of data[0] when n not in ['id'])
+	
+	depcol = $.grep(columns, (e) -> e.id == 'departures')[0]
+	depcol['groupTotalsFormatter'] = (total, coldef) ->
+		return total.sum.departures
+	
+	routecol = $.grep(columns, (e) -> e.id == 'route_name')[0]
+	routecol['formatter'] = (args...) ->
+		row = args[4]
+		urlargs = _.pick row, 'route_variant', 'direction', 'shape'
+		url = "route.html?"+$.param urlargs
+		return route_link_template url: url
 		
-		groupItemMetadataProvider = new Slick.Data.GroupItemMetadataProvider()
-		dataView = new Slick.Data.DataView
-			groupItemMetadataProvider: groupItemMetadataProvider
-			inlineFilters: true
 
-		dataView.setGrouping(
-			getter: 'route_name'
-			formatter: (g) -> g.value
-			#aggregators: [
-			#	new Slick.Data.Aggregators.Sum("departures")
-			#	]
-			aggregateCollapsed: true
-			collapsed: true)
-		dataView.setItems(data)
-		grid = new Slick.Grid "#departure_grid", dataView, columns,
-			forceFitColumns: true
-			multiSelect: false
-
-		grid.registerPlugin groupItemMetadataProvider
-		grid.setSelectionModel new Slick.RowSelectionModel()
-
-		dataView.onRowCountChanged.subscribe (e, args) ->
-			grid.updateRowCount()
-			grid.render()
+	[columns[1], columns[0]] = [columns[0], columns[1]]
 		
-		dataView.onRowsChanged.subscribe (e, args) ->
-			grid.invalidateRows(args.rows)
-			grid.render()
+	groupItemMetadataProvider = new Slick.Data.GroupItemMetadataProvider()
+	dataView = new Slick.Data.DataView
+		groupItemMetadataProvider: groupItemMetadataProvider
+		inlineFilters: true
+
+	dataView.setGrouping(
+		getter: 'route_name'
+		formatter: (g) -> g.value
+		#aggregators: [
+		#	new Slick.Data.Aggregators.Sum("departures")
+		#	]
+		aggregateCollapsed: true
+		collapsed: true)
+	dataView.setItems(data)
+	grid = new Slick.Grid "#departure_grid", dataView, columns,
+		forceFitColumns: true
+		multiSelect: false
+
+	grid.registerPlugin groupItemMetadataProvider
+	grid.setSelectionModel new Slick.RowSelectionModel()
+
+	dataView.onRowCountChanged.subscribe (e, args) ->
+		grid.updateRowCount()
+		grid.render()
+	
+	dataView.onRowsChanged.subscribe (e, args) ->
+		grid.invalidateRows(args.rows)
+		grid.render()
+
+###
+_setup_router = (ctrl) ->
+	edges = {}
+	for [from, to, data] in ctrl.graph.edges
+		edges[e[0]][e[1]] = data.distance
+###
+
+$ ->
+	Controller.Create().done (ctrl) ->
+		_setup_map ctrl
+		_setup_table ctrl
+		#_setup_router ctrl
 
 </script>
 
-<div id="departure_grid" style="width: 640; height: 480"></div>
+<div id="route_map" class="route_select_map" style="width: 640; height: 480; float: left"></div>
+<div id="departure_grid" style="width: 640; height: 480; float: left"></div>
