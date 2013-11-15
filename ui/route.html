@@ -165,27 +165,13 @@ class DataController
 		return Math.round dist/@distance_bin_width
 
 format_seconds = (seconds) ->
-	return seconds
-	# TODO: See if something sensical can
-	# be made of this
-	hours = Math.floor(seconds/(60*60))
-	seconds -= hours*60*60
 	minutes = Math.floor(seconds/60)
 	seconds -= minutes*60
-	seconds = Math.round(seconds)
-	if hours > 0
-		str = "#{hours}h"
-		if minutes > 0 and hours < 10
-			str += " #{minutes}m"
-		return str
-	if minutes > 0
-		str = "#{minutes}m"
-		if seconds == 0
-			return str
-		if seconds > 0 and minutes < 10
-			str += " #{seconds}s"
-		return str
-	return "#{seconds}s"
+	seconds = "#{Math.round(seconds)}"
+	
+	if seconds.length < 2
+		seconds = "0" + seconds
+	return "#{minutes}:#{seconds}"
 
 route_header_template = _.template """
 	<a href="index.html">&lt;&lt; Back</a> |
@@ -454,7 +440,7 @@ $ ->
 	</div>
 	<div class="col-6" style="height: 200px;">
 		<div id="route-duration"></div>
-		<axislabel class="xlabel">Time spent</axislabel>
+		<axislabel class="xlabel">Time spent (m:s)</axislabel>
 		<axislabel class="ylabel">Share of drives (%)</axislabel>
 
 	</div>
@@ -467,6 +453,6 @@ $ ->
 	<div class="col-6" style="height: 200px;">
 		<div id="duration-by-tod"></div>
 		<axislabel class="xlabel">Time of day</axislabel>
-		<axislabel class="ylabel">Time spent</axislabel>
+		<axislabel class="ylabel">Time spent (m:s)</axislabel>
 	</div>
 </div>
