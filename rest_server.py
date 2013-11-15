@@ -210,7 +210,6 @@ def get_node_path_traces(db, nodes, grid_size=5.0):
 		
 	
 	result = []
-	# This "may" hurt performance
 	for shape in shapes:
 		if shape['shape'] not in included_shapes:
 			continue
@@ -220,10 +219,12 @@ def get_node_path_traces(db, nodes, grid_size=5.0):
 		startd, endd = shape['distances'][starti], shape['distances'][endi]
 
 		query = """
-		select id, reference_time, shape, distance_bin_width,
-			time_at_distance_grid[trunc(%s/distance_bin_width):trunc(%s/distance_bin_width)] as time_at_distance_grid
+		select id, reference_time, distance_bin_width,
+			time_at_distance_grid[trunc(%s/distance_bin_width):trunc(%s/distance_bin_width)] as time_at_distance_grid,
+			transit_departure.*
 		from routed_trace
-		where shape=%s
+		join transit_departure on transit_departure.routed_trace=id
+		where transit_departure.shape=%s
 		"""
 
 		data = db.bind.execute(query, (startd, endd, shape['shape']))
