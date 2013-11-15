@@ -419,6 +419,7 @@ class TransAnal.StopSeqPlot
 
 		activate = (d) =>
 			ew = x.expand d.stop_id
+			cursor.setHoverPosition d.distance
 			gapsize = @bottomx.autoWidth ew
 			@bottomx.expandGap d.stop_id, ew - gapsize
 			d.active = true
@@ -444,6 +445,7 @@ class TransAnal.StopSeqPlot
 
 
 		deactivate = (d) =>
+			cursor.setHoverPosition undefined
 			return if d.pinned ? false
 			
 			x.contract d.stop_id
