@@ -28,31 +28,63 @@
 <script type="text/javascript" src="static/js/buckets.js"></script>
 <script type="text/coffeescript" src="static/js/dijkstra.coffee"></script>
 
+<link rel="stylesheet" href="static/bootstrap/css/bootstrap.css" type="text/css"/>
 <link rel="stylesheet/less" href="static/css/transit_analysis.less" type="text/css"/>
 
 <script type="text/javascript" src="static/js/less-1.4.1.js"></script>
 
 <style type="text/css">
 /* SVG with less seems to work a bit randomly, so let's hack here */
+.route_select_map .point_layer {
+	opacity: 0.7;
+}
+
 .route_select_map .nodepoint {
 	fill: black;
+	stroke-width: 2;
 }
 
 .route_select_map .nodepoint:hover {
-	stroke: red;
-	stroke-width: 4;
+	stroke: black;
+	stroke-width: 9;
 }
 
 .route_select_map .selected_nodepoint {
 	fill: red;
 	stroke: red;
-	stroke-width: 3;
+	stroke-width: 6;
+}
+
+.route_select_map .selected_nodepoint:hover {
+	fill: red;
+	stroke: red;
+	stroke-width: 9;
+}
+
+.route_select_map {
+	position: relative;
+}
+
+.route_select_map .map_controls {
+	position: absolute;
+	bottom: 0;
+	padding: 10px;
+	width: 100%;
 }
 </style>
 
 <script type="text/coffeescript">
 route_link_template = _.template """
 <a href="<%= url %>" class="view-route-link">View</a>
+"""
+
+selected_node_label_template = _.template """
+  <foreignObject>
+    <body xmlns="http://www.w3.org/1999/xhtml">
+      <div>The quick brown fox jumps over the lazy dog. Pack my box with
+         five dozen liquor jugs</div>
+    </body>
+  </foreignObject>
 """
 
 class Signal
@@ -90,7 +122,11 @@ class Controller
 	constructor: (@routes, @shapes, @graph) ->
 		@selected_nodes = new SignalingValue([])
 		@selected_route = new SignalingValue()
-		
+	
+	selection_url: =>
+		return null if not @selected_route.get()
+		return "route.html?route_nodes=" + @selected_nodes.get().join()
+
 
 _setup_map = (ctrl) ->
 	# Far from optimal
@@ -120,47 +156,44 @@ _setup_map = (ctrl) ->
 		extent = [minc, maxc]
 		route_map.set_extent(extent)
 		styler = (style) -> style
-		
-		hook_events = (feat) ->
-			$el = $ feat.element
-			$el.attr "id", feat.data.id
-			
-			if selected_nodes.get().indexOf(feat.data.id) >= 0
-				$el.attr("class", "nodepoint selected_nodepoint")
-			else
-				$el.attr("class", "nodepoint")
-			#$el.mouseenter ->
-			#	$el
-			#	.attr("r", 9)
-			#$el.mouseleave ->
-			#	$el
-			#	.attr("r", 3)
-
-			$el.click ->
-				sel = selected_nodes.get()
-				id = $el.attr('id')
-				idx = sel.indexOf(id)
-				if idx >= 0
-					sel.splice(idx, 1)
-				else
-					sel.push id
-					
-				selected_nodes.set(sel)
-				
-				
 
 		onload = (opts) ->
 			for feat in opts.features
 				hook_events(feat)
+		
+		points = []
+		for i in [0...coords.length]
+			c = coords[i]
+			points.push
+				lat: c[0]
+				lon: c[1]
+				id: ids[i]
+		
+		point_layer = route_map.add_points(points)
+		
+		d3.select(point_layer.element).selectAll('circle')
+		.attr('class', 'nodepoint')
+		.attr('r', 2)
+		
+		
+		$(point_layer.element).find('.nodepoint').click (args...) ->
+			$el = $ @
+			sel = selected_nodes.get()
+			id = $el.attr('id')
+			idx = sel.indexOf(id)
+			if idx >= 0
+				sel.splice(idx, 1)
+			else
+				sel.push id
+				
+			selected_nodes.set(sel)
 
-		layer = route_map.add_points(
-			coords
-			ids
-			styler
-			onload)
+		# A weird mix of d3 and jquery continues
 
 		selected_nodes.changed.on (nodes) ->
-			$(".nodepoint").attr("class", "nodepoint")
+			np = $ ".nodepoint"
+			np.attr("class", "nodepoint")
+			np.empty()
 			for n in nodes
 				el = $("##{n}")
 				el.attr("class", "nodepoint selected_nodepoint")
@@ -172,7 +205,34 @@ _setup_map = (ctrl) ->
 
 			route_map.add_route coords, "selected_route",
 				(style) -> style.attr("class", "selected_route_line")
-			
+		
+		controls = $(route_map.el).append("""
+		<div class="map_controls">
+		<button class="clear_selection btn btn-danger">Clear selection</button>
+		<a class="view_route btn btn-success pull-right">View route</a>
+		</div>
+		""")
+		clear_btn = controls.find('.clear_selection')
+		clear_btn.addClass('disabled')
+		selected_nodes.changed.on (sel) ->
+			if sel.length > 0
+				clear_btn.removeClass 'disabled'
+			else
+				clear_btn.addClass 'disabled'
+
+		clear_btn.click ->
+			selected_nodes.set([])
+		
+		view_btn = controls.find('.view_route')
+		view_btn.addClass('disabled')
+		ctrl.selected_route.changed.on (sel) ->
+			if sel
+				view_btn.removeClass 'disabled'
+				view_btn.attr "href", ctrl.selection_url()
+			else
+				view_btn.addClass 'disabled'
+				view_btn.removeAttr "href"
+
 
 _setup_table = (ctrl) ->
 	data = ctrl.routes
@@ -251,7 +311,7 @@ $ ->
 	Controller.Create().done (ctrl) ->
 		window.debugctrl = ctrl
 		_setup_map ctrl
-		#_setup_table ctrl
+		_setup_table ctrl
 		_setup_router ctrl
 
 </script>
