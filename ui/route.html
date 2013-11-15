@@ -123,9 +123,6 @@ class DataController
 		@cursor = new TrusasCursor()
 
 		query = $.deparam(window.location.search[1..])
-		shape_promise = $.getJSON \
-			"resources/coordinate_shape.json?"+$.param(_.pick(query, 'shape'))
-
 		traces_query = "resources/departure_traces.json"+window.location.search
 
 		traces_promise = @con()
@@ -135,9 +132,11 @@ class DataController
 			.departures()
 			.stops()
 			.stop_duration_stats()
-			.inter_stop_duration_stats()()
+			.inter_stop_duration_stats()
+			.coordinate_shape()()
 		
-		shape_promise.done @_setup_cursor
+		traces_promise.done (data) =>
+			@_setup_cursor data.coordinate_shape
 		traces_promise.done @_setup_data
 
 		@span_durations = new TransAnal.DynamicValue (start, end) =>
@@ -145,7 +144,7 @@ class DataController
 		
 		@ready = $.Deferred()
 		
-		promises = $.when shape_promise, traces_promise
+		promises = $.when traces_promise
 		promises.done => @ready.resolve @
 	
 	_setup_cursor: (data) =>
@@ -188,10 +187,16 @@ format_seconds = (seconds) ->
 		return str
 	return "#{seconds}s"
 
-header_template = _.template """
+route_header_template = _.template """
 	<a href="index.html">&lt;&lt; Back</a> |
 		Route <%= route_variant %>, direction <%= direction %>, shape <%= shape %>
 	"""
+
+custom_header_template = _.template """
+	<a href="index.html">&lt;&lt; Back</a> |
+		Custom route
+	"""
+
 
 
 _setup = (ctrl) ->
@@ -424,7 +429,12 @@ _setup_seq_plot = (ctrl) ->
 		
 $ ->
 	query = $.deparam(window.location.search[1..])
-	$("#session-info").html(header_template(query))
+	if "route_nodes" of query
+		header = custom_header_template query
+	else
+		header = route_header_template query
+	
+	$("#session-info").html(header)
 	
 	promise = TransAnal.Stats.Connect query
 	promise.done (con) ->

@@ -98,26 +98,26 @@ def coordinate_shapes(db, **kwargs):
 		""")
 	return resultoutput(result)
 
-@db_provider()
-def coordinate_shape(db, shape):
+def get_coordinate_shape(db, shape):
 	result = db.bind.execute("""
 		select * from coordinate_shape
 		where shape=%s
 		""", shape)
 	
-	row = result.fetchone()
+	return dict(result.fetchone())
+
+@db_provider()
+def coordinate_shape(db, shape):
+	row = get_coordinate_shape(db, shape)
 	if not row: return None
 	row = OrderedDict(row.items())
 	return StringIO(serialize.dumps(row))
 
-@db_provider()
-def route_graph_edges(db, **kwargs):
-	db = schema.connect()
-	
+def route_graph(db):
 	shapes = db.bind.execute("""
 		select * from coordinate_shape
 		""")
-	
+	shapes = list(shapes)
 	graph = nx.DiGraph()
 	
 	positions = {}
@@ -136,6 +136,12 @@ def route_graph_edges(db, **kwargs):
 			edge['distance'] = distances[i+1] - distances[i]
 		positions[nodes[-1]] = coords[-1]
 	
+	return graph, positions, shapes
+
+
+@db_provider()
+def route_graph_edges(db, **kwargs):
+	graph, positions, shapes = route_graph(db)
 	out = {
 		'edges': graph.edges(data=True),
 		'nodes': positions
@@ -180,12 +186,71 @@ def get_departure_traces(db, shape, route_variant=None, direction=None):
 	
 	return db.bind.execute(query)
 
+def get_node_path_traces(db, nodes, grid_size=5.0):
+	graph, positions, shapes = route_graph(db)
+	path = []
+	for i in range(len(nodes)-1):
+		# Remove the first node as it'll get duplicated
+		source, target = nodes[i:i+2]
+		subpath = nx.shortest_path(graph,
+			source=source, target=target, weight='distance')
+		path.extend(subpath[:-1])
+	path.append(nodes[-1])
+	
+	# The shape must be on all of the edges of the
+	# route. Most visualizations don't really make
+	# sense otherwise.
+	included_shapes = set(graph[path[0]][path[1]]['shapes'])
+	distance = [0.0]
+	for i in range(len(path)-1):
+		a, b = path[i:i+2]
+		edge = graph[a][b]
+		distance.append(distance[-1] + edge['distance'])
+		included_shapes.intersection_update(edge['shapes'])
+		
+	
+	result = []
+	# This "may" hurt performance
+	for shape in shapes:
+		if shape['shape'] not in included_shapes:
+			continue
+		
+		starti = shape['node_ids'].index(path[0])
+		endi = shape['node_ids'].index(path[-1])
+		startd, endd = shape['distances'][starti], shape['distances'][endi]
+
+		query = """
+		select id, reference_time, shape, distance_bin_width,
+			time_at_distance_grid[trunc(%s/distance_bin_width):trunc(%s/distance_bin_width)] as time_at_distance_grid
+		from routed_trace
+		where shape=%s
+		"""
+
+		data = db.bind.execute(query, (startd, endd, shape['shape']))
+		result.extend(map(dict, data))
+	
+	# Make sure the grids are of equal size. This may have one-bin
+	# difference due to rounding
+	minlength = min((len(d['time_at_distance_grid']) for d in result))
+	for drive in result:
+		drive['time_at_distance_grid'] = drive['time_at_distance_grid'][:minlength]
+	
+	fake_shape = {
+		'coordinates': [positions[n] for n in path],
+		'distances': distance
+		}
+	return result, fake_shape
+
 @db_provider()
 def departure_traces(db, **kwargs):
 	return resultoutput(get_departure_traces(db, **kwargs))
 
 
 def axispercentile(values, percentiles):
+	if values.size == 0:
+		return np.empty((len(percentiles), 0))
+	
+
 	# TODO: WOW, how slow is this!
 	results = np.empty((len(percentiles), values.shape[1]))
 	for p, percentile in enumerate(percentiles):
@@ -202,14 +267,26 @@ percs = (
 		('highp', 0.95))
 
 class ShapeSession:
+	def __populate_data(self):
+		if "route_nodes" in self._query:
+			nodes = self._query['route_nodes'].split(',')
+			self._result, self._shape = get_node_path_traces(self._db, nodes)
+			self._stops = []
+		else:
+			self._result = list(get_departure_traces(self._db, **self._query))
+			self._stops = list(get_shape_stops(self._db, self._query['shape']))
+			self._shape = get_coordinate_shape(self._db, self._query['shape'])
+
 	def __init__(self, db, **kwargs):
 		self.stop_span = 100.0
-
+		
+		self._db = db
 		self._query = kwargs
-		self._result = list(get_departure_traces(db, **kwargs))
-		self._binwidth = self._result[0].distance_bin_width
+		self.__populate_data()
+		
+		self._binwidth = self._result[0]['distance_bin_width']
 		self._timegrid = np.vstack(
-			[r.time_at_distance_grid for r in self._result]
+			[r['time_at_distance_grid'] for r in self._result]
 			)
 		self._time_spent = np.diff(self._timegrid, axis=1)
 		self._speed = 1.0/self._time_spent*self._binwidth*3.6
@@ -217,7 +294,6 @@ class ShapeSession:
 		maxdist = self._timegrid.shape[1]*self._binwidth
 		self._distgrid = np.arange(0, maxdist, self._binwidth)[:-1]
 		
-		self._stops = list(get_shape_stops(db, kwargs['shape']))
 
 	
 	def _mymethods(self):
@@ -315,6 +391,9 @@ class ShapeSession:
 		s = self.distance_bin(float(start))
 		e = self.distance_bin(float(end))
 		return self._timegrid[:,e] - self._timegrid[:,s]
+	
+	def coordinate_shape(self):
+		return self._shape
 
 class RouteStatisticsProvider:
 	def __init__(self, db, mypath="route_statistics"):

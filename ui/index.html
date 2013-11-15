@@ -71,6 +71,12 @@
 	padding: 10px;
 	width: 100%;
 }
+
+.route-select-widgets {
+	margin-top: 30px;
+	margin-left: 20px;
+	margin-right: 20px;
+}
 </style>
 
 <script type="text/coffeescript">
@@ -188,7 +194,7 @@ _setup_map = (ctrl) ->
 				
 			selected_nodes.set(sel)
 
-		# A weird mix of d3 and jquery continues
+		# A weird mix of d3 and jquery deepens
 
 		selected_nodes.changed.on (nodes) ->
 			np = $ ".nodepoint"
@@ -315,6 +321,13 @@ $ ->
 		_setup_router ctrl
 
 </script>
-
-<div id="route_map" class="route_select_map" style="width: 640; height: 480; float: left"></div>
-<div id="departure_grid" style="width: 640; height: 480; float: left"></div>
+<div class="widget-container route-select-widgets row">
+	<div class="col-6" style="height: 425px">
+		<axislabel class="toplabel acttopbin">Route map</axislabel>
+		<div id="route_map" class="route_select_map"></div>
+	</div>
+	<div class="col-6" style="height: 425px;">
+		<axislabel class="toplabel acttopbin">Route table</axislabel>
+		<div id="departure_grid"></div>
+	</div>
+</div>
