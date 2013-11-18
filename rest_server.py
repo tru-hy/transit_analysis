@@ -107,7 +107,8 @@ def get_coordinate_shape(db, shape):
 		where shape=%s
 		""", shape)
 	
-	return dict(result.fetchone())
+	result = dict(result.fetchone())
+	return result
 
 @db_provider()
 def coordinate_shape(db, shape):

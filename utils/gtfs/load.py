@@ -25,14 +25,22 @@ def coordinate_shape(noded_shapes, **kwargs):
 	proj = pyproj.Proj(init=coordinate_projection)
 	filepath = noded_shapes
 	shapes = {}
+	prev_id = None
 	for row in NamedTupleCsvReader(bomopen(filepath)):
 		if row.shape_id not in shapes:
 			shapes[row.shape_id] = []
+			prev_id = None
 
 		if row.node_id != "":
 			node_id = row.node_id
 		else:
 			node_id = None
+
+		# Dedupe shapes. The fitter outputs
+		# identical nodes after each other sometimes.
+		if prev_id is not None and node_id == prev_id:
+			continue
+		prev_id = node_id
 		shapes[row.shape_id].append((
 			int(row.shape_pt_sequence),
 			float(row.shape_pt_lat),
