@@ -1,7 +1,7 @@
 # Requires buckets.js
 # See https://github.com/mauriciosantos/buckets
 
-@dijkstra_shortest_path = (edges, from, to) ->
+@dijkstra_shortest_path = (edges, from, to, weight, whitelist) ->
 	dist = {}
 	visited = {}
 	previous = {}
@@ -23,7 +23,9 @@
 			break
 		visited[current] = true
 		
-		for next, d_to_next of edges[current]
+		for next, edgedata of edges[current]
+			continue if not whitelist next
+			d_to_next = weight edgedata
 			if next of visited
 				continue
 			alt = current_d + d_to_next

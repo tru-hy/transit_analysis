@@ -84,15 +84,6 @@ route_link_template = _.template """
 <a href="<%= url %>" class="view-route-link">View</a>
 """
 
-selected_node_label_template = _.template """
-  <foreignObject>
-    <body xmlns="http://www.w3.org/1999/xhtml">
-      <div>The quick brown fox jumps over the lazy dog. Pack my box with
-         five dozen liquor jugs</div>
-    </body>
-  </foreignObject>
-"""
-
 class Signal
 	constructor: (@owner, @name) ->
 	
@@ -128,6 +119,7 @@ class Controller
 	constructor: (@routes, @shapes, @graph) ->
 		@selected_nodes = new SignalingValue([])
 		@selected_route = new SignalingValue()
+		@reachable_nodes = new SignalingValue(@graph.nodes)
 	
 	selection_url: =>
 		return null if not @selected_route.get()
@@ -211,6 +203,13 @@ _setup_map = (ctrl) ->
 
 			route_map.add_route coords, "selected_route",
 				(style) -> style.attr("class", "selected_route_line")
+
+		ctrl.reachable_nodes.changed.on (whitelist) ->
+			$(".nodepoint").attr 'display', 'none'
+			for node of whitelist
+				$("##{node}").attr 'display', 'inline'
+			for node in ctrl.selected_nodes.get()
+				$("##{node}").attr 'display', 'inline'
 		
 		controls = $(route_map.el).append("""
 		<div class="map_controls">
@@ -292,27 +291,70 @@ _setup_router = (ctrl) ->
 	edges = {}
 	for [from, to, data] in ctrl.graph.edges
 		edges[from] ?= {}
-		edges[from][to] = data.distance
+		edges[from][to] = data
 	
 	ctrl.selected_nodes.changed.on (nodes) ->
-		if nodes.length < 2
+		if nodes.length == 0
 			ctrl.selected_route.set null
+			ctrl.reachable_nodes.set ctrl.graph.nodes
 			return
 		
-		path = []
-		for i in [0...nodes.length-1]
-			subpath = dijkstra_shortest_path edges, nodes[i], nodes[i+1]
-			if not subpath
-				path = null
-				break
+		reachable_shapes = {}
 
-			for p in subpath
-				path.push p
-			path.pop()
-		if path
-			path.push nodes[nodes.length-1]
-		ctrl.selected_route.set path
-	
+		# Find all shapes that have a route through
+		# these nodes
+		for shape in ctrl.shapes
+			node_ids = shape.node_ids
+			prev = node_ids.indexOf(nodes[0])
+			continue if prev < 0
+			idx = [prev]
+			
+			dobreak = false
+			for n in nodes[1...]
+				next = node_ids[prev+1...].indexOf(n)
+				if next < 0
+					dobreak = true
+					break
+				prev = next + prev + 1
+				idx.push prev
+			continue if dobreak
+				
+			reachable_shapes[shape.shape] =
+				nodes: node_ids[idx[0]..idx[idx.length-1]]
+				reachable_nodes: node_ids[idx[0]+1...]
+				dist: shape.distances[idx[1]] - shape.distances[idx[0]]
+		
+		if nodes.length < 2
+			reachable_nodes = {}
+			for shape, data of reachable_shapes
+				reachable_nodes[n] = true for n in data.reachable_nodes
+			ctrl.selected_route.set null
+			ctrl.reachable_nodes.set reachable_nodes
+			return
+
+		
+		# Find shortest of such routes
+		mindist = Number.MAX_VALUE
+		minshape = undefined
+		for shape, data of reachable_shapes
+			if data.dist < mindist
+				mindist = data.dist
+				minshape = data
+
+		# And filter only ones that are equal to this
+		# A bit hacky comparison but should work
+		minseqstr = "#{minshape.nodes}"
+		for shape, data of reachable_shapes
+			if "#{data.nodes}" != minseqstr
+				delete reachable_shapes[shape]
+
+		reachable_nodes = {}
+		for shape, data of reachable_shapes
+			reachable_nodes[n] = true for n in data.reachable_nodes
+
+		ctrl.selected_route.set minshape.nodes
+		ctrl.reachable_nodes.set reachable_nodes
+		
 $ ->
 	Controller.Create().done (ctrl) ->
 		window.debugctrl = ctrl

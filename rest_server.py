@@ -87,15 +87,18 @@ def transit_routes(db, **kwargs):
 		"""%dict(cols=cols))
 	return resultoutput(result)
 
-@db_provider()
-def coordinate_shapes(db, **kwargs):
-	result = db.bind.execute("""
-		select coordinate_shape.shape, coordinates
+def get_active_coordinate_shapes(db):
+	return db.bind.execute("""
+		select coordinate_shape.shape, coordinates, node_ids, distances
 			from coordinate_shape
 		where coordinate_shape.shape in
 		(select distinct shape from transit_departure
 		where routed_trace notnull)
 		""")
+
+@db_provider()
+def coordinate_shapes(db, **kwargs):
+	result = get_active_coordinate_shapes(db)
 	return resultoutput(result)
 
 def get_coordinate_shape(db, shape):
@@ -114,9 +117,7 @@ def coordinate_shape(db, shape):
 	return StringIO(serialize.dumps(row))
 
 def route_graph(db):
-	shapes = db.bind.execute("""
-		select * from coordinate_shape
-		""")
+	shapes = get_active_coordinate_shapes(db)
 	shapes = list(shapes)
 	graph = nx.DiGraph()
 	
@@ -188,36 +189,36 @@ def get_departure_traces(db, shape, route_variant=None, direction=None):
 
 def get_node_path_traces(db, nodes, grid_size=5.0):
 	graph, positions, shapes = route_graph(db)
-	path = []
-	for i in range(len(nodes)-1):
-		# Remove the first node as it'll get duplicated
-		source, target = nodes[i:i+2]
-		subpath = nx.shortest_path(graph,
-			source=source, target=target, weight='distance')
-		path.extend(subpath[:-1])
-	path.append(nodes[-1])
 	
-	# The shape must be on all of the edges of the
-	# route. Most visualizations don't really make
-	# sense otherwise.
-	included_shapes = set(graph[path[0]][path[1]]['shapes'])
-	distance = [0.0]
-	for i in range(len(path)-1):
-		a, b = path[i:i+2]
-		edge = graph[a][b]
-		distance.append(distance[-1] + edge['distance'])
-		included_shapes.intersection_update(edge['shapes'])
-		
-	
-	result = []
+	active_shapes = []
+	mindist = float("inf")
+	minnodes = None
+	distances = None
 	for shape in shapes:
-		if shape['shape'] not in included_shapes:
+		prev = -1
+		idx = []
+		try:
+			for node in nodes:
+				next = shape.node_ids[prev+1:].index(node)
+				idx.append(next+prev+1)
+				prev = idx[-1]
+		except ValueError:
 			continue
 		
-		starti = shape['node_ids'].index(path[0])
-		endi = shape['node_ids'].index(path[-1])
-		startd, endd = shape['distances'][starti], shape['distances'][endi]
-
+		sdist = shape.distances[idx[0]]
+		edist = shape.distances[idx[-1]]
+		dist = edist - sdist
+		if dist < mindist:
+			mindist = dist
+			minnodes = shape.node_ids[idx[0]:idx[-1]+1]
+			distances = shape.distances[idx[0]:idx[-1]+1]
+			active_shapes = [(shape, (sdist, edist))]
+		elif dist == mindist and minnodes == shape.node_ids[idx[0]:idx[-1]+1]:
+			active_shapes.append((shape, (sdist, edist)))
+	
+	path = minnodes
+	result = []
+	for shape, (startd, endd) in active_shapes:
 		query = """
 		select id, reference_time, distance_bin_width,
 			time_at_distance_grid[trunc(%s/distance_bin_width):trunc(%s/distance_bin_width)] as time_at_distance_grid,
@@ -236,9 +237,10 @@ def get_node_path_traces(db, nodes, grid_size=5.0):
 	for drive in result:
 		drive['time_at_distance_grid'] = drive['time_at_distance_grid'][:minlength]
 	
+	distances = np.array(distances)-distances[0]
 	fake_shape = {
 		'coordinates': [positions[n] for n in path],
-		'distances': distance
+		'distances': list(distances)
 		}
 	return result, fake_shape
 
