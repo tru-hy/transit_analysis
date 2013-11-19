@@ -478,7 +478,6 @@ class TransAnal.StopSeqPlot
 			n = stops.length-1
 
 		gaps = ([stops[i], stops[i+1]] for i in [0...n])
-		console.log gaps, n
 		speed = (d) ->
 			(d[1].distance - d[0].distance)/stats.median[d[0].index]
 
