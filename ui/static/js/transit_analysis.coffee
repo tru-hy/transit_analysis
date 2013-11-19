@@ -472,17 +472,14 @@ class TransAnal.StopSeqPlot
 			)
 		@bottomx = x
 			
-		#x = d3.scale.ordinal()
-		#	.rangeRoundBands([0, width], 0.1)
-		#	.domain(s.stop_id for s in stops)
-
 		gaps = ([stops[i], stops[i+1]] for i in [0...stops.length])
 		gaps = gaps[...-1]
 		speed = (d) ->
 			(d[1].distance - d[0].distance)/stats.median[d[0].index]
 
-			
-		maxvalid = Math.max (speed(d) for d in gaps)...
+		
+		speeds = (speed(d) for d in gaps)
+		maxvalid = Math.max (d for d in speeds when d == d)...
 		y = d3.scale.linear()
 			.range([height, 0])
 			.domain([0, maxvalid])
