@@ -381,6 +381,8 @@ _setup_seq_plot = (ctrl) ->
 
 _setup_date_select = (ctrl) ->
 	#times = (new Date(d.departure_time) for d in ctrl.departures)
+	allweekdays = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+
 	mindate = ctrl.date_range['mindate']
 	maxdate = ctrl.date_range['maxdate']
 	
@@ -407,29 +409,58 @@ _setup_date_select = (ctrl) ->
 		endDate: moment(maxdate).format(moment_format)
 		autoclose: true
 	
+	if param.weekdays?
+		sel_weekdays = param.weekdays.split(',')
+	else
+		sel_weekdays = allweekdays
+	sel_weekdays.sort()
+	
+	weekdayel = $("#date-selector .weekdays")
+	for weekday in sel_weekdays
+		el = weekdayel.find("input[name=#{weekday}]")
+		el.attr "checked", "checked"
+
 	update_date = ->
 		newstart = startel.val()
 		newend = endel.val()
 		changed = false
+		valid = true
 		changed = true if newstart != starts
 		changed = true if newend != ends
+
+		newweekdays = []
+		for el in weekdayel.find('input')
+			el = $ el
+			if el.attr('checked')
+				newweekdays.push el.attr "name"
+		newweekdays.sort()
 		
-		filterbutton.toggleClass "disabled", not changed
-		filterbutton.toggleClass "btn-default", not changed
-		filterbutton.toggleClass "btn-success", changed
+		if newweekdays.length == 0
+			valid = false
+
+		if "#{newweekdays}" != "#{sel_weekdays}"
+			changed = true
+
+		activate_btn = changed and valid
+		filterbutton.toggleClass "disabled", not activate_btn
+		filterbutton.toggleClass "btn-default", not activate_btn
+		filterbutton.toggleClass "btn-success", activate_btn
 		
 		filterbutton[0].href = window.location
 		param = $.deparam(filterbutton[0].search[1...])
+
 		
 		opts =
 			start_date: newstart
 			end_date: newend
-		
+			weekdays: newweekdays.join(',')
+
 		for k, v of opts
 			param[k] = v
 		
 		filterbutton[0].search = "?"+$.param(param)
-
+	
+	weekdayel.find('input').change update_date
 	startel.change update_date
 	endel.change update_date
 	

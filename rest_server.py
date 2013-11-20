@@ -154,6 +154,16 @@ def route_graph_edges(db, **kwargs):
 def nocols(tbl, *exclude):
 	return [tbl.c[n] for (n) in tbl.c.keys() if n not in exclude]
 
+WEEKDAY_NUMBERS = {
+	'mon': 1,
+	'tue': 2,
+	'wed': 3,
+	'thu': 4,
+	'fri': 5,
+	'sat': 6,
+	'sun': 0
+	}
+
 def get_shape_stops(db, shape):
 	q = """
 	with ss as (
@@ -171,7 +181,7 @@ def get_shape_stops(db, shape):
 	return db.bind.execute(q, shape=shape)
 
 def get_departure_traces(db, shape, route_variant=None, direction=None,
-			start_date=None, end_date=None):
+			start_date=None, end_date=None, weekdays=None):
 	dep = db.tables['transit_departure']
 	tr = db.tables['routed_trace']
 	
@@ -201,13 +211,16 @@ def get_departure_traces(db, shape, route_variant=None, direction=None,
 		query = query.where(depdate >= start_date)
 	if end_date is not None:
 		query = query.where(depdate <= end_date)
+	if weekdays:
+		numbered = tuple(WEEKDAY_NUMBERS[d] for d in weekdays)
+		q = "extract('dow' from departure_time) in :dow"
+		query = query.where(q).params(dow=numbered)
 	
 	range_result = dict(db.bind.execute(rangequery).fetchone())
 
-
 	return db.bind.execute(query), range_result
 
-def get_node_path_traces(db, route_nodes, start_date=None, end_date=None):
+def get_node_path_traces(db, route_nodes, start_date=None, end_date=None, weekdays=None):
 	graph, positions, shapes = route_graph(db)
 	
 	active_shapes = []
@@ -245,6 +258,9 @@ def get_node_path_traces(db, route_nodes, start_date=None, end_date=None):
 	if end_date:
 		datefilter += " and date(transit_departure.departure_time) <= %(end_date)s"
 		qargs['end_date'] = end_date
+	if weekdays:
+		datefilter += " and extract(dow from transit_departure.departure_time) in %(weekdays)s"
+		qargs['weekdays'] = tuple(WEEKDAY_NUMBERS[d] for d in weekdays)
 
 	path = minnodes
 	result = []
@@ -321,15 +337,19 @@ percs = (
 
 class ShapeSession:
 	def __populate_data(self):
+		parsed_query = dict(self._query)
+
+		if 'weekdays' in parsed_query:
+			parsed_query['weekdays'] = parsed_query['weekdays'].split(',')
+
 		if "route_nodes" in self._query:
-			nodes = self._query['route_nodes'].split(',')
-			query = dict(self._query)
-			query['route_nodes'] = nodes
-			self._result, self._shape, date_range = get_node_path_traces(self._db, **query)
+			nodes = parsed_query['route_nodes'].split(',')
+			parsed_query['route_nodes'] = nodes
+			self._result, self._shape, date_range = get_node_path_traces(self._db, **parsed_query)
 			self.date_range = lambda: date_range
 			self._stops = []
 		else:
-			self._result, daterange = get_departure_traces(self._db, **self._query)
+			self._result, daterange = get_departure_traces(self._db, **parsed_query)
 			self._result = list(self._result)
 			self.date_range = lambda: daterange
 			self._stops = list(get_shape_stops(self._db, self._query['shape']))
