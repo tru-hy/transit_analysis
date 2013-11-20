@@ -170,25 +170,44 @@ def get_shape_stops(db, shape):
 	"""
 	return db.bind.execute(q, shape=shape)
 
-def get_departure_traces(db, shape, route_variant=None, direction=None):
+def get_departure_traces(db, shape, route_variant=None, direction=None,
+			start_date=None, end_date=None):
 	dep = db.tables['transit_departure']
 	tr = db.tables['routed_trace']
 	
 	
-	cols = [dep, tr.c.time_at_distance_grid, tr.c.distance_bin_width]
+	depdate = sqa.func.date(dep.c.departure_time.label('departure_date'))
+	cols = [dep, tr.c.time_at_distance_grid, tr.c.distance_bin_width,
+		depdate]
 	#+ nocols(tr, 'id', 'shape')
 	query = sqa.select(cols).\
 		where(dep.c.routed_trace==tr.c.id).\
 		where(dep.c.shape==shape)
 	
+	rangequery = sqa.select([
+		sqa.func.min(dep.c.departure_time).label('mindate'),
+		sqa.func.max(dep.c.departure_time).label('maxdate')
+		]).\
+		where(dep.c.routed_trace==tr.c.id).\
+		where(dep.c.shape==shape)
+	
 	if route_variant is not None:
 		query = query.where(dep.c.route_variant==route_variant)
+		rangequery = rangequery.where(dep.c.route_variant==route_variant)
 	if direction is not None:
 		query = query.where(dep.c.direction==direction)
+		rangequery = rangequery.where(dep.c.direction==direction)
+	if start_date is not None:
+		query = query.where(depdate >= start_date)
+	if end_date is not None:
+		query = query.where(depdate <= end_date)
 	
-	return db.bind.execute(query)
+	range_result = dict(db.bind.execute(rangequery).fetchone())
 
-def get_node_path_traces(db, nodes, grid_size=5.0):
+
+	return db.bind.execute(query), range_result
+
+def get_node_path_traces(db, route_nodes, start_date=None, end_date=None):
 	graph, positions, shapes = route_graph(db)
 	
 	active_shapes = []
@@ -199,7 +218,7 @@ def get_node_path_traces(db, nodes, grid_size=5.0):
 		prev = -1
 		idx = []
 		try:
-			for node in nodes:
+			for node in route_nodes:
 				next = shape.node_ids[prev+1:].index(node)
 				idx.append(next+prev+1)
 				prev = idx[-1]
@@ -217,19 +236,33 @@ def get_node_path_traces(db, nodes, grid_size=5.0):
 		elif dist == mindist and minnodes == shape.node_ids[idx[0]:idx[-1]+1]:
 			active_shapes.append((shape, (sdist, edist)))
 	
+	
+	datefilter = ""
+	qargs = {}
+	if start_date:
+		datefilter += " and date(transit_departure.departure_time) >= %(start_date)s"
+		qargs['start_date'] = start_date
+	if end_date:
+		datefilter += " and date(transit_departure.departure_time) <= %(end_date)s"
+		qargs['end_date'] = end_date
+
 	path = minnodes
 	result = []
 	for shape, (startd, endd) in active_shapes:
+		mqargs = dict(qargs)
+		mqargs['startd'] = startd
+		mqargs['endd'] = endd
+		mqargs['shape'] = shape['shape']
 		query = """
 		select id, reference_time, distance_bin_width,
-			time_at_distance_grid[trunc(%s/distance_bin_width):trunc(%s/distance_bin_width)] as time_at_distance_grid,
+			time_at_distance_grid[trunc(%%(startd)s/distance_bin_width):trunc(%%(endd)s/distance_bin_width)] as time_at_distance_grid,
+			date(transit_departure.departure_time) as departure_date,
 			transit_departure.*
 		from routed_trace
 		join transit_departure on transit_departure.routed_trace=id
-		where transit_departure.shape=%s
-		"""
-
-		data = db.bind.execute(query, (startd, endd, shape['shape']))
+		where transit_departure.shape=%%(shape)s %s
+		"""%(datefilter,)
+		data = db.bind.execute(query, **mqargs)
 		result.extend(map(dict, data))
 	
 	# Make sure the grids are of equal size. This may have one-bin
@@ -243,11 +276,27 @@ def get_node_path_traces(db, nodes, grid_size=5.0):
 		'coordinates': [positions[n] for n in path],
 		'distances': list(distances)
 		}
-	return result, fake_shape
+	
+	date_range = """
+		select min(departure_time) as mindate, max(departure_time) as maxdate
+		from transit_departure
+		where routed_trace notnull
+		and shape in %(shape_ids)s"""
+	
+	
+	
+	shape_ids = [s[0].shape for s in active_shapes]
+
+	shape_ids.append('adsfasfaf')
+	shape_ids = tuple(shape_ids)
+	date_range = db.bind.execute(date_range, shape_ids=shape_ids)
+	date_range = dict(date_range.fetchone())
+
+	return result, fake_shape, date_range
 
 @db_provider()
 def departure_traces(db, **kwargs):
-	return resultoutput(get_departure_traces(db, **kwargs))
+	return resultoutput(get_departure_traces(db, **kwargs)[0])
 
 
 def axispercentile(values, percentiles):
@@ -274,10 +323,15 @@ class ShapeSession:
 	def __populate_data(self):
 		if "route_nodes" in self._query:
 			nodes = self._query['route_nodes'].split(',')
-			self._result, self._shape = get_node_path_traces(self._db, nodes)
+			query = dict(self._query)
+			query['route_nodes'] = nodes
+			self._result, self._shape, date_range = get_node_path_traces(self._db, **query)
+			self.date_range = lambda: date_range
 			self._stops = []
 		else:
-			self._result = list(get_departure_traces(self._db, **self._query))
+			self._result, daterange = get_departure_traces(self._db, **self._query)
+			self._result = list(self._result)
+			self.date_range = lambda: daterange
 			self._stops = list(get_shape_stops(self._db, self._query['shape']))
 			self._shape = get_coordinate_shape(self._db, self._query['shape'])
 

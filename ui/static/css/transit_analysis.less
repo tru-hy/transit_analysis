@@ -1,4 +1,4 @@
-//@import (css) "../bootstrap/css/bootstrap.css";
+//@import "../bootstrap/less/bootstrap.less";
 
 .slick-row a.view-route-link {
 	display: none;
@@ -22,12 +22,31 @@ body {
 	a{ color: #eee; }
 }
 
-#session-info {
-	margin-left: 20px;
-	margin-bottom: 10px;
-	.shadowtext;
-	}
+.header-container {
+	width: 100%;
 
+	.shadowtext;
+	
+	
+
+	#session-info {
+	
+	}
+	
+	#date-selector {
+		text-align: right;
+		
+		label {
+			text-shadow: 0px 0px 0px #000;
+		}
+	}
+	
+	td {
+		padding-left: 20px;
+		padding-right: 20px;
+		padding-bottom: 10px;
+	}
+}
 
 
 #route-map > .cesium-widget > canvas {

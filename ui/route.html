@@ -24,12 +24,15 @@
 
 <script type="text/javascript" src="/static/js/science.v1.js"></script>
 
-<!--<script type="text/javascript" src="static/js/envision.min.js"></script>
-<link rel="stylesheet" href="static/css/envision.min.css" type="text/css"/> -->
-
 <script type="text/javascript" src="static/js/underscore.js"></script>
 
 <link rel="stylesheet" href="static/bootstrap/css/bootstrap.css" type="text/css"/>
+<script type="text/javascript" href="static/bootstrap/js/bootstrap.min.js"></script>
+
+<link rel="stylesheet" href="static/bootstrap-datepicker/datepicker.css" type="text/css"/>
+<script type="text/javascript" src="static/js/moment.min.js"></script>
+<script type="text/javascript" src="static/bootstrap-datepicker/bootstrap-datepicker.js"></script>
+
 <link rel="stylesheet/less" href="static/css/transit_analysis.less" type="text/css"/>
 
 <script type="text/javascript" src="static/js/less-1.4.1.js"></script>
@@ -95,7 +98,8 @@ class DataController
 			.stops()
 			.stop_duration_stats()
 			.inter_stop_duration_stats()
-			.coordinate_shape()()
+			.coordinate_shape()
+			.date_range()()
 		
 		traces_promise.done (data) =>
 			@_setup_cursor data.coordinate_shape
@@ -157,6 +161,7 @@ _setup = (ctrl) ->
 		rng = (parseFloat p for p in hash.split ':')
 		ctrl.cursor.setActiveRange rng
 	
+	_setup_date_select ctrl
 	_setup_seq_plot ctrl
 	_setup_map ctrl
 	_setup_plots ctrl
@@ -374,7 +379,61 @@ _setup_seq_plot = (ctrl) ->
 		plot.pin_bottom_toggle()
 		
 
+_setup_date_select = (ctrl) ->
+	#times = (new Date(d.departure_time) for d in ctrl.departures)
+	mindate = ctrl.date_range['mindate']
+	maxdate = ctrl.date_range['maxdate']
+	
+	param = $.deparam(window.location.search[1...])
+	start = new Date(param.start_date ? mindate)
+	end = new Date(param.end_date ? maxdate)
+	
+	moment_format = "YYYY-MM-DD"
+	# The picker has it's own formatter, but it seems
+	# to be impossible to access due to the very annoying
+	# jquery plugin interface thingy
+	picker_format = "yyyy-mm-dd"
+
+	starts = moment(start).format(moment_format)
+	ends = moment(end).format(moment_format)
+	element = $('#datepicker')
+	startel = element.find("[name='start']").val(starts)
+	endel = element.find("[name='end']").val(ends)
+	filterbutton = $ "#date-selector #filter-dates"
+
+	cal = element.datepicker
+		format: picker_format
+		startDate: moment(mindate).format(moment_format)
+		endDate: moment(maxdate).format(moment_format)
+		autoclose: true
+	
+	update_date = ->
+		newstart = startel.val()
+		newend = endel.val()
+		changed = false
+		changed = true if newstart != starts
+		changed = true if newend != ends
 		
+		filterbutton.toggleClass "disabled", not changed
+		filterbutton.toggleClass "btn-default", not changed
+		filterbutton.toggleClass "btn-success", changed
+		
+		filterbutton[0].href = window.location
+		param = $.deparam(filterbutton[0].search[1...])
+		
+		opts =
+			start_date: newstart
+			end_date: newend
+		
+		for k, v of opts
+			param[k] = v
+		
+		filterbutton[0].search = "?"+$.param(param)
+
+	startel.change update_date
+	endel.change update_date
+	
+	
 $ ->
 	query = $.deparam(window.location.search[1..])
 	if "route_nodes" of query
@@ -390,29 +449,69 @@ $ ->
 		ctrl.ready.done _setup
 
 </script>
-<div id="session-info"></div>
+
+<!-- Yes, it's a table for layouting. It works. Deal with it. -->
+<table class="header-container">
+	<tr>
+		<td id="session-info"></td>
+		<td id="date-selector">
+			<span class="input-daterange" id="datepicker">
+    				<input type="text" class="input-xs" name="start" />
+    				<span>-</span>
+    				<input type="text" class="input-xs" name="end" />
+			</span>
+
+			<div class="btn-group weekdays">
+				<label class="btn btn-default btn-xs">
+					<input type="checkbox" name="mon" /> Mon
+				</label>
+				<label class="btn btn-default btn-xs">
+					<input type="checkbox" name="tue" /> Tue
+				</label>
+				<label class="btn btn-default btn-xs">
+					<input type="checkbox" name="wed" /> Wed
+				</label>
+				<label class="btn btn-default btn-xs">
+					<input type="checkbox" name="thu" /> Thu
+				</label>
+				<label class="btn btn-default btn-xs">
+					<input type="checkbox" name="fri" /> Fri
+				</label>
+				<label class="btn btn-default btn-xs">
+					<input type="checkbox" name="sat" /> Sat
+				</label>
+				<label class="btn btn-default btn-xs">
+					<input type="checkbox" name="sun" /> Sun
+				</label>
+			</div>
+
+			<a id="filter-dates" class="btn btn-xs disabled btn-default">Filter</a>
+		</td>
+	</tr>
+</table>
+
 <div class="widget-container" class="row">
-	<div class="col-6" style="height: 425px">
+	<div class="col-xs-6" style="height: 425px">
 		<div id="route-map"></div>
 	</div>
-	<div class="col-6" style="height: 200px;">
+	<div class="col-xs-6" style="height: 200px;">
 		<div id="route-speed"></div>
 		<axislabel class="xlabel">Distance (m)</axislabel>
 		<axislabel class="ylabel">Speed (km/h)</axislabel>
 	</div>
-	<div class="col-6" style="height: 200px;">
+	<div class="col-xs-6" style="height: 200px;">
 		<div id="route-duration"></div>
 		<axislabel class="xlabel">Time spent (m:s)</axislabel>
 		<axislabel class="ylabel">Share of drives (%)</axislabel>
 
 	</div>
-	<div class="col-6" style="height: 200px;">
+	<div class="col-xs-6" style="height: 200px;">
 		<axislabel class="toplabel acttopbin">Stops (stop %)</axislabel>
 		<div id="route-seq"></div>
 		<axislabel class="xlabel actbottombin">Between stops (time spent)</axislabel>
 	</div>
 
-	<div class="col-6" style="height: 200px;">
+	<div class="col-xs-6" style="height: 200px;">
 		<div id="duration-by-tod"></div>
 		<axislabel class="xlabel">Time of day</axislabel>
 		<axislabel class="ylabel">Time spent (m:s)</axislabel>
