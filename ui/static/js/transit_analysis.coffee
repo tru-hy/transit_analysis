@@ -95,12 +95,13 @@ class TransAnal.DynamicValue
 	constructor: (@_fetcher) ->
 		@_value = undefined
 		@_args = undefined
-		signames = ['update']
+		signames = ['update', 'preupdate']
 		@["$"+s] = new Signal @, s for s in signames
 	
 	value: => @_value
 
 	refresh: (args...) =>
+		@$preupdate.trigger()
 		@_args = args
 		@_fetcher(args...)
 			.done @_setValue

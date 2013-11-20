@@ -349,7 +349,13 @@ _setup_plots = (ctrl) ->
 				fill: 0.5
 			xaxis:
 				tickFormatter: format_seconds
-	ctrl.span_durations.$update.on plot_durations
+	
+	ctrl.span_durations.$preupdate.on ->
+		$("#route-duration").spin()
+
+	ctrl.span_durations.$update.on (durarr) ->
+		plot_durations durarr
+		$("#route-duration").spin(false)
 
 	plot_dur_tod = (durarr) ->
 		durations = []
@@ -382,7 +388,13 @@ _setup_plots = (ctrl) ->
 					"#{hours}:#{minutes}"
 			yaxis:
 				tickFormatter: format_seconds
-	ctrl.span_durations.$update.on plot_dur_tod
+	
+	ctrl.span_durations.$preupdate.on ->
+		$("#duration-by-tod").spin()
+
+	ctrl.span_durations.$update.on (data) ->
+		plot_dur_tod data
+		$("#duration-by-tod").spin(false)
 
 _setup_seq_plot = (ctrl) ->
 	plot = new TransAnal.StopSeqPlot "#route-seq", ctrl
