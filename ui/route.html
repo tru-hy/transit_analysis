@@ -543,17 +543,19 @@ _setup_drive_stats = (ctrl) ->
 		else
 			stats[grp] = 1
 	
+	statlist = []
 	for k, v of stats
 		grp = JSON.parse k
 		grp.ndrives = v
-		table.append $ row grp
+		statlist.push grp
 	
-	table_container = $ "<div>"
-	table_container.append table
+	statlist = _.sortBy statlist, (d) -> -d.ndrives
+
+	table.append $ row grp for grp in statlist
 	
 	po = $("#session-info > button").popover
 		html: true
-		content: table_container
+		content: table
 		placement: "bottom"
 		container: "body"
 	
