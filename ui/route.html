@@ -17,7 +17,7 @@
 
 
 <link rel="stylesheet" href="static/bootstrap/css/bootstrap.css" type="text/css"/>
-<script type="text/javascript" href="static/bootstrap/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="static/bootstrap/js/bootstrap.min.js"></script>
 
 <link rel="stylesheet" href="static/pnotify/jquery.pnotify.default.css" type="text/css"/>
 <script type="text/javascript" src="static/pnotify/jquery.pnotify.js"></script>
@@ -159,13 +159,18 @@ format_seconds = (seconds) ->
 	return "#{minutes}:#{seconds}"
 
 route_header_template = _.template """
-	<a href="index.html">&lt;&lt; Back</a> |
-		Route <%= route_variant %>, direction <%= direction %>, shape <%= shape %>
+	<a class="btn btn-default btn-xs" href="index.html">&lt;Back</a>
+	<button class="btn btn-default btn-xs">
+		Route <%= route_variant %>, direction <%= direction %>
+		<span class="number-of-drives"></span>
+	</button>
 	"""
 
 custom_header_template = _.template """
-	<a href="index.html">&lt;&lt; Back</a> |
-		Custom route
+	<a class="btn btn-default btn-xs" href="index.html">&lt;Back</a>
+	<button class="btn btn-default btn-xs">
+		Custom route <span class="number-of-drives"></span>
+	</button>
 	"""
 
 
@@ -180,6 +185,7 @@ _setup = (ctrl) ->
 		rng = (parseFloat p for p in hash.split ':')
 		ctrl.cursor.setActiveRange rng
 	
+	_setup_drive_stats ctrl
 	_setup_date_select ctrl
 	_setup_seq_plot ctrl
 	_setup_map ctrl
@@ -494,7 +500,62 @@ _setup_date_select = (ctrl) ->
 	weekdayel.find('input').change update_date
 	startel.change update_date
 	endel.change update_date
+
+_setup_drive_stats = (ctrl) ->
+	departures = ctrl.departures
 	
+	$("#session-info .number-of-drives")
+		.html "(#{departures.length} drives)"
+	
+	table = $ """
+	<table class="departure-statistics">
+	<tr>
+		<th>Route</th>
+		<th>Variant</th>
+		<th>Direction</th>
+		<th>Shape</th>
+		<th>Drives</th>
+	</tr>
+	</table>
+	"""
+
+	row = _.template """
+	<tr>
+		<td><%= name %></td>
+		<td><%= variant %></td>
+		<td><%= direction %></td>
+		<td><%= shape %></td>
+		<td><%= ndrives %></td>
+	</tr>
+	"""
+
+	stats = {}
+	for d in departures
+		grp =
+			name: d.route_name
+			variant: d.route_variant
+			direction: d.direction
+			shape: d.shape
+		
+		grp = JSON.stringify(grp)
+		if grp of stats
+			stats[grp] += 1
+		else
+			stats[grp] = 1
+	
+	for k, v of stats
+		grp = JSON.parse k
+		grp.ndrives = v
+		table.append $ row grp
+	
+	table_container = $ "<div>"
+	table_container.append table
+	
+	po = $("#session-info > button").popover
+		html: true
+		content: table_container
+		placement: "bottom"
+		container: "body"
 	
 $ ->
 	query = $.deparam(window.location.search[1..])
