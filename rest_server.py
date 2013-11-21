@@ -223,10 +223,10 @@ def get_departure_traces(db, shape, route_variant=None, direction=None,
 def get_node_path_traces(db, route_nodes, start_date=None, end_date=None, weekdays=None):
 	graph, positions, shapes = route_graph(db)
 	
-	active_shapes = []
 	mindist = float("inf")
 	minnodes = None
-	distances = None
+	mindistances = None
+	candidates = []
 	for shape in shapes:
 		prev = -1
 		idx = []
@@ -238,17 +238,27 @@ def get_node_path_traces(db, route_nodes, start_date=None, end_date=None, weekda
 		except ValueError:
 			continue
 		
+		
 		sdist = shape.distances[idx[0]]
 		edist = shape.distances[idx[-1]]
 		dist = edist - sdist
+
+		nodes = shape.node_ids[idx[0]:idx[-1]+1]
+		distances = shape.distances[idx[0]:idx[-1]+1]
+		candidates.append((shape, nodes, distances))
 		if dist < mindist:
 			mindist = dist
-			minnodes = shape.node_ids[idx[0]:idx[-1]+1]
-			distances = shape.distances[idx[0]:idx[-1]+1]
-			active_shapes = [(shape, (sdist, edist))]
-		elif dist == mindist and minnodes == shape.node_ids[idx[0]:idx[-1]+1]:
-			active_shapes.append((shape, (sdist, edist)))
+			minnodes = nodes
+			mindistances = distances
 	
+	active_shapes = []
+	for shape, nodes, distances in candidates:
+		if nodes != minnodes:
+			continue
+		active_shapes.append((shape, (distances[0], distances[-1])))
+		
+	
+	distances = mindistances
 	
 	datefilter = ""
 	qargs = {}
