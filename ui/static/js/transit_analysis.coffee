@@ -658,3 +658,42 @@ class TransAnal.StopSeqPlot
 
 	return [inliers, outliers]
 
+
+$ ->
+	template = _.template """
+	<div class="project-credit">
+	<h4><a href="<%= url %>"><%= project %></a></h4>
+	<p class="description"><%= descr %></p>
+	<p class="license">
+		<span class="license-label">License:</span>
+		<a class="license-name"
+		   href="<%= license.url %>"
+		   title="<%= license.name %>"
+		><%= license.shorthand %></a>
+	</p>
+	</div>
+	"""
+
+	element = $ """<div id="project-credits"></div>"""
+	$('body').append(element)
+	
+	for project, opts of TRANSIT_ANALYSIS_CREDITS
+		opts.project = project
+		license = LICENSES[opts.license]
+		license.shorthand = opts.license
+		opts.license = license
+		element.append $(template(opts))
+	
+	element.append("<hr /><h5>And many more. See the source.</h5>")
+	
+	btn = $ """
+		<a id="project-credits-button" title="Credits" href="#">
+		  <span class="glyphicon glyphicon-copyright-mark"></span>
+		</a>
+		"""
+	
+	btn.click (ev) ->
+		ev.preventDefault()
+		$("#project-credits").fadeToggle()
+	
+	$("body").append(btn)
