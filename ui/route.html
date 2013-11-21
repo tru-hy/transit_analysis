@@ -98,9 +98,8 @@ class DataController
 			.coordinate_shape()
 			.date_range()()
 		
-		traces_promise.done (data) =>
-			@_setup_cursor data.coordinate_shape
 		traces_promise.done @_setup_data
+		traces_promise.done @_setup_cursor
 
 		@span_durations = new TransAnal.DynamicValue (start, end) =>
 			@con.span_durations start: start, end: end
@@ -111,9 +110,25 @@ class DataController
 		promises.done => @ready.resolve @
 	
 	_setup_cursor: (data) =>
-		@route = data
+		data = @route = @coordinate_shape
+		
+		# Remove edge-effects
+		stats = @time_spent_stats.median
+		n = stats.length
+		for start in [0...n]
+			s = stats[start]
+			break if s == s
+
+		for end in [n-2...0]
+			s = stats[end]
+			break if s == s
+		
+		mindist = @distance_grid[start]
+		maxdist = @distance_grid[end]
+		
+
 		[lats, lons] = _.zip(data.coordinates...)
-		@cursor.accommodateAxisRange _.min(data.distances), _.max(data.distances)
+		@cursor.accommodateAxisRange mindist, maxdist
 		@pos_to_coords = Trusas.coord_interp data.distances, lats, lons
 		@cursorpath = Trusas.rangepath data.distances, lats, lons
 		
