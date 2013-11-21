@@ -79,28 +79,6 @@ histogram = (values, binw=double_freedman_fiaconis_binw) ->
 
 nonnans = (xs) -> (x for x in xs if x == x)
 
-find_next_valid = (a, idx, thres=10) ->
-	for i in [idx...idx+thres]
-		if i >= a.length
-			break
-		if a[i] == a[i]
-			return a[i]
-	return NaN
-	
-find_prev_valid = (a, idx, thres=10) ->
-	start = Math.max(idx-thres, 0)
-	for i in [start..idx]
-		if a[i] == a[i]
-			return a[i]
-	return NaN
-
-find_close_valid = (a, idx, dir=1, thres=100) ->
-	funcs = [find_next_valid, find_prev_valid]
-	v = funcs[0] a, idx, thres
-	return v if v == v
-	v = funcs[1] a, idx, thres
-
-
 class DataController
 	constructor: (@con) ->
 		
@@ -176,20 +154,26 @@ custom_header_template = _.template """
 
 
 _setup = (ctrl) ->
-	$(ctrl.cursor).on "activeRangeChange", (e, rng) ->
-		hash = "#{Math.round(rng[0])}:#{Math.round(rng[1])}"
-		window.location.replace(('' + window.location).split('#')[0] + '#' + hash)
-
-	hash = window.location.hash[1..]
-	if hash != ''
-		rng = (parseFloat p for p in hash.split ':')
-		ctrl.cursor.setActiveRange rng
 	
 	_setup_drive_stats ctrl
 	_setup_date_select ctrl
 	_setup_seq_plot ctrl
 	_setup_map ctrl
 	_setup_plots ctrl
+
+	hash = window.location.hash[1..]
+	if hash != ''
+		rng = (parseFloat p for p in hash.split ':')
+		ctrl.cursor.setActiveRange rng
+	else
+		# Force-trigger cursor change so that the plots will load
+		rng = ctrl.cursor.getActiveRange()
+		ctrl.cursor.$.trigger "activeRangeChange", [rng]
+	
+	$(ctrl.cursor).on "activeRangeChange", (e, rng) ->
+		hash = "#{Math.round(rng[0])}:#{Math.round(rng[1])}"
+		window.location.replace(('' + window.location).split('#')[0] + '#' + hash)
+
 
 _setup_map = (ctrl) ->
 	Trusas.Map.Create($("#route-map")[0]).done (route_map) ->
@@ -236,9 +220,7 @@ _setup_map = (ctrl) ->
 				
 			extent_setup rng
 
-		# TODO: For some reason this fails if done too early,
-		# so a hack.
-		setTimeout (-> extent_setup ctrl.cursor.getActiveRange()), 100
+		extent_setup ctrl.cursor.getActiveRange()
 		
 		$(ctrl.cursor).on "hoverPositionChange", (e, pos) ->
 			coords = ctrl.pos_to_coords pos
