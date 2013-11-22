@@ -170,7 +170,7 @@ def _fetch_shapes(conn):
 	return [r[0] for r in cur]
 
 
-def filter_routes(uri=schema.default_uri, shape=None):
+def filter_routes(uri=schema.default_uri, shape=None, verbose=False):
 	db = schema.connect(uri)
 	conn = db.bind.raw_connection()
 	
@@ -182,11 +182,18 @@ def filter_routes(uri=schema.default_uri, shape=None):
 	routed_tbl = db.tables['routed_trace']
 	departure_tbl = db.tables['transit_departure']
 	n_shapes = len(shapes)
+
+	total_fits = 0
 	for i, shape in enumerate(shapes):
-		print >>sys.stderr, "Processing %i/%i shapes"%(i+1, n_shapes)
+		#if verbose:
+		#	print >>sys.stderr, "Processing %i/%i shapes"%(i+1, n_shapes)
 		mappings = filter_shape_routes(db, shape)
+
 		for mapping in mappings:
 			insert_routed_trace(routed_tbl, departure_tbl, mapping)
+			total_fits += 1
+	if verbose:
+		print >>sys.stderr, "%i new traces"%(total_fits,)
 
 def plot_shape_route_filtering(db, shape):
 	import matplotlib.pyplot as plt

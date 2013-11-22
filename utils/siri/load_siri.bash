@@ -1,7 +1,7 @@
 #!/bin/bash
 
-set -v
+#set -v
 # Load data
 ./siri_dump_parse.py load "$1"
 # Fit to shapes
-../filter_routes.py filter-routes 
+../filter_routes.py filter-routes -v

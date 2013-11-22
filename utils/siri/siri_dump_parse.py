@@ -163,7 +163,9 @@ class TraceLoader:
 	
 				
 	def finish(self):
-		for trace in self.traces.iteritems():
+		keys = self.traces.keys()
+		for key in keys:
+			trace = self.traces[key]
 			self._insert(trace)
 			del self.traces[key]
 		self.traces = {}
@@ -189,7 +191,7 @@ def load(adapter, timezone=""):
 			except KeyError:
 				continue
 			loader(departure, measurement)
-		
+		loader.finish()
 		transaction.commit()
 
 if __name__ == '__main__':
