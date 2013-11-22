@@ -38,6 +38,7 @@
 <script type="text/javascript" src="/static/js/jquery.flot.js"></script>
 <script type="text/javascript" src="/static/js/jquery.flot.crosshair.js"></script>
 <script type="text/javascript" src="/static/js/jquery.flot.navigate.js"></script>
+<script type="text/javascript" src="/static/js/jquery.flot.selection.js"></script>
 <script type="text/javascript" src="/static/js/jquery.flot.fillbetween.js"></script>
 
 <script type="text/javascript" src="/static/js/d3.v3.js"></script>
@@ -299,6 +300,7 @@ _setup_plots = (ctrl) ->
 	plot = $.plot el, items,
 		zoom: interactive: true
 		pan: interactive: true
+		selection: mode: 'x'
 		yaxis:
 			panRange: false
 			zoomRange: false
@@ -314,6 +316,15 @@ _setup_plots = (ctrl) ->
 			max: ctrl.cursor.getActiveRange()[1]
 		grid: hoverable: true
 		crosshair: mode: 'x'
+	
+	el.on "plotselected", (ev, ranges) ->
+		opts = plot.getAxes().xaxis.options
+		opts.min = ranges.xaxis.from
+		opts.max = ranges.xaxis.to
+		plot.setupGrid()
+		plot.draw()
+		plot.clearSelection(false)
+		plot.getPlaceholder().trigger("plotzoom", [ plot, [] ])
 
 	update_cursor = ->
 		axes = plot.getAxes()
