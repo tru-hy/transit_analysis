@@ -1,3 +1,5 @@
+#!/usr/bin/env python2
+
 import urllib2
 import urlparse
 from base64 import b64encode
