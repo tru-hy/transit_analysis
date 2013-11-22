@@ -84,7 +84,7 @@ def pop_unfinished_traces(con):
 
 	traces = {}
 	for row in con.execute(q):
-		traces[(row.departure_id, row.source)] = row
+		traces[(row.departure_id, row.source)] = dict(row)
 	
 	return traces
 
