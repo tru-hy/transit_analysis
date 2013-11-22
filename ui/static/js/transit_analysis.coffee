@@ -531,6 +531,7 @@ class TransAnal.StopSeqPlot
 
 		activate = (d) =>
 			ew = x.expand d[0].stop_id
+			cursor.setHoverPosition (d[0].distance + d[1].distance)/2.0
 			gapsize = @topx.autoWidth ew
 			@topx.expandGap d[1].stop_id, ew - gapsize
 			d.active = true
