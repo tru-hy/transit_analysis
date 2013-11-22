@@ -175,6 +175,7 @@ _setup = (ctrl) ->
 	_setup_date_select ctrl
 	_setup_seq_plot ctrl
 	_setup_map ctrl
+	_setup_map_buttons ctrl
 	_setup_plots ctrl
 
 	hash = window.location.hash[1..]
@@ -566,6 +567,37 @@ _setup_drive_stats = (ctrl) ->
 		content: table
 		placement: "bottom"
 		container: "body"
+
+_setup_map_buttons = (ctrl) ->
+	el = $("#show-view-as-custom")
+	
+	ctrl.cursor.$.on "activeRangeChange", (ev, rng) ->
+		shape = ctrl.coordinate_shape
+		n = shape.node_ids.length
+		start = Trusas.searchsorted(rng[0], shape.distances) - 1
+		start = 0 if start < 0
+		++start while shape.node_ids[start] == 'N'
+
+		end = Trusas.searchsorted(rng[1], shape.distances) + 1
+		end = n - 1 if end >= n
+		++end while shape.node_ids[end] == 'N'
+
+
+		startdist = rng[0] - shape.distances[start]
+		totaldist = rng[1] - rng[0]
+		enddist = startdist + totaldist
+
+		nodes = shape.node_ids[start..end]
+		
+		el[0].href = window.location
+		el[0].hash = "##{startdist}:#{enddist}"
+		query = $.deparam el[0].search[1..]
+
+		for k in ['route_variant', 'direction', 'shape']
+			delete query[k] if k of query
+		query['route_nodes'] = nodes.join ','
+		el[0].search = "?" + $.param query
+
 	
 $ ->
 	query = $.deparam(window.location.search[1..])
@@ -628,7 +660,10 @@ $ ->
 </table>
 
 <div class="widget-container" class="row">
-	<div class="col-xs-6" style="height: 425px">
+	<div class="col-xs-6 map-container" style="height: 425px">
+		<a class="btn btn-default" id="show-view-as-custom">
+			View as route
+		</a>
 		<div id="route-map"></div>
 	</div>
 	<div class="col-xs-6" style="height: 200px;">

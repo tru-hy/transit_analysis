@@ -300,7 +300,8 @@ def get_node_path_traces(db, route_nodes, start_date=None, end_date=None, weekda
 	distances = np.array(distances)-distances[0]
 	fake_shape = {
 		'coordinates': [positions[n] for n in path],
-		'distances': list(distances)
+		'distances': list(distances),
+		'node_ids': path
 		}
 	
 	date_range = """
