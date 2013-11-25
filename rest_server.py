@@ -4,6 +4,7 @@ from cStringIO import StringIO
 import os
 from collections import OrderedDict
 import urlparse
+import uuid
 
 import sqlalchemy as sqa
 import networkx as nx
@@ -349,6 +350,9 @@ percs = (
 class ShapeSession:
 	def __populate_data(self):
 		parsed_query = dict(self._query)
+		for k in parsed_query.keys():
+			if k.startswith('__trusas'):
+				del parsed_query[k]
 
 		if 'weekdays' in parsed_query:
 			parsed_query['weekdays'] = parsed_query['weekdays'].split(',')
@@ -511,6 +515,9 @@ class RouteStatisticsProvider:
 		return self.sessions[session_key]
 
 	def _new_session(self, **kwargs):
+		if '__trusas_uuid' not in kwargs:
+			kwargs['__trusas_uuid'] = str(uuid.uuid4())
+
 		session_key = "&".join(("%s=%s"%(k, v) for k, v in kwargs.items()))
 		if session_key not in self.sessions:
 			self.sessions[session_key] = ShapeSession(self.db, **kwargs)
