@@ -195,6 +195,9 @@ def get_departure_traces(db, shape, route_variant=None, direction=None,
 		where(dep.c.routed_trace==tr.c.id).\
 		where(dep.c.shape==shape)
 	
+	query = query.order_by(sqa.func.random()).\
+		limit(config.max_drives_per_session)
+	
 	rangequery = sqa.select([
 		sqa.func.min(dep.c.departure_time).label('mindate'),
 		sqa.func.max(dep.c.departure_time).label('maxdate')
@@ -252,11 +255,12 @@ def get_node_path_traces(db, route_nodes, start_date=None, end_date=None, weekda
 			minnodes = nodes
 			mindistances = distances
 	
-	active_shapes = []
+	active_shapes = {}
 	for shape, nodes, distances in candidates:
 		if nodes != minnodes:
 			continue
-		active_shapes.append((shape, (distances[0], distances[-1])))
+		sdata = dict(shape=shape, distedges=(distances[0], distances[-1]))
+		active_shapes[shape['shape']] = sdata
 		
 	
 	distances = mindistances
@@ -272,14 +276,32 @@ def get_node_path_traces(db, route_nodes, start_date=None, end_date=None, weekda
 	if weekdays:
 		datefilter += " and extract(dow from transit_departure.departure_time) in %(weekdays)s"
 		qargs['weekdays'] = tuple(WEEKDAY_NUMBERS[d] for d in weekdays)
+	
 
+	drives_per_shape = """
+		select shape, count(routed_trace) as number_of_drives
+		from transit_departure
+		where shape in %%(shapes)s %s
+		group by shape
+		"""%(datefilter,)
+	shape_ids = tuple(active_shapes.keys())
+	drives_per_shape = db.bind.execute(drives_per_shape, shapes=shape_ids)
+	drives_per_shape = [list(d) for d in drives_per_shape]
+	total = float(sum(d[1] for d in drives_per_shape))
+	include_perc = config.max_drives_per_session/total
+	for shape_id, n in drives_per_shape:
+		active_shapes[shape_id]['max_amount'] = max(1, n*include_perc)
+	
 	path = minnodes
 	result = []
-	for shape, (startd, endd) in active_shapes:
+	for shape_id, sdata in active_shapes.iteritems():
+		startd, endd = sdata['distedges']
+		shape = sdata['shape']
 		mqargs = dict(qargs)
 		mqargs['startd'] = startd
 		mqargs['endd'] = endd
 		mqargs['shape'] = shape['shape']
+		mqargs['max_amount'] = sdata['max_amount']
 		query = """
 		select id, reference_time, distance_bin_width,
 			time_at_distance_grid[trunc(%%(startd)s/distance_bin_width):trunc(%%(endd)s/distance_bin_width)] as time_at_distance_grid,
@@ -288,6 +310,8 @@ def get_node_path_traces(db, route_nodes, start_date=None, end_date=None, weekda
 		from routed_trace
 		join transit_departure on transit_departure.routed_trace=id
 		where transit_departure.shape=%%(shape)s %s
+		order by random()
+		limit %%(max_amount)s
 		"""%(datefilter,)
 		data = db.bind.execute(query, **mqargs)
 		result.extend(map(dict, data))
@@ -313,10 +337,7 @@ def get_node_path_traces(db, route_nodes, start_date=None, end_date=None, weekda
 	
 	
 	
-	shape_ids = [s[0].shape for s in active_shapes]
-
-	shape_ids.append('adsfasfaf')
-	shape_ids = tuple(shape_ids)
+	shape_ids = tuple(active_shapes.iterkeys())
 	date_range = db.bind.execute(date_range, shape_ids=shape_ids)
 	date_range = dict(date_range.fetchone())
 
