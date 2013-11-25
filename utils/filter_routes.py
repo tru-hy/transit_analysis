@@ -83,7 +83,7 @@ class RouteFilter:
 			return None
 	
 		dist_interp = scipy.interpolate.interp1d(ts, coords)
-		new_ts = np.arange(ts[0], ts[-1], self.new_dt)
+		new_ts = np.arange(ts[0], ts[-1] - self.new_dt, self.new_dt)
 		if len(new_ts) < 10:
 			return None
 		gridded_dist = dist_interp(new_ts)
