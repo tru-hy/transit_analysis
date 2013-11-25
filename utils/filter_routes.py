@@ -84,6 +84,8 @@ class RouteFilter:
 	
 		dist_interp = scipy.interpolate.interp1d(ts, coords)
 		new_ts = np.arange(ts[0], ts[-1], self.new_dt)
+		if len(new_ts) < 10:
+			return None
 		gridded_dist = dist_interp(new_ts)
 		smoothed_dist = smooth1d_grid_l1_l2(gridded_dist, smoothing=3.0,
 				crit=1e-3, max_iters=30)
@@ -125,12 +127,12 @@ def filter_shape_routes(db, shape, filter_cls=RouteFilter):
 	coord_cur = conn.cursor()
 	
 	for i, (departure, coordinates) in enumerate(get_shape_departures(db, shape)):
-		if len(coordinates) < 10: continue
 		ts, lat, lon = np.array(coordinates).T
 		cart = np.array(zip(*coord_proj(lon, lat)))
 		# The dumper shouldn't put out identical timestamps, but
 		# apparently it does.
 		valid = np.flatnonzero(np.diff(ts) > 0)
+		if np.sum(valid) < 10: continue
 		try:
 			result = routefilter(ts[valid], cart[valid], departure=departure)
 			if not result:
