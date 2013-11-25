@@ -1,6 +1,6 @@
 #!/usr/bin/env python2
 
-from StringIO import StringIO
+from cStringIO import StringIO
 import os
 from collections import OrderedDict
 import urlparse
