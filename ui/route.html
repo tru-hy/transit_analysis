@@ -391,14 +391,14 @@ _setup_plots = (ctrl) ->
 			minutes = date.getHours()*60 + date.getMinutes()
 			durations.push [minutes, durarr[i]]
 
-		$.plot $("#duration-by-tod"), [{data: durations, color: "rgb(0,0,0,0.5)"}],
+		$.plot $("#duration-by-tod"), [{data: durations, color: "rgb(0,0,0,0.1)"}],
 			series:
 				shadowSize: 0
 				points:
-					radius: 3
+					radius: 5
 					show: true
-					fill: 0.5
-					fillColor: "black"
+					fill: true
+					fillColor: "rgba(0,0,0,0.2)"
 					lineWidth: 0
 			xaxis:
 				tickFormatter: (x) ->
