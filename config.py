@@ -9,6 +9,7 @@ coordinate_projection = "epsg:3067"
 db_connection_uri = "postgres://transit:transit@localhost/transit"
 
 max_drives_per_session = 3000
+max_cached_sessions = 10
 
 try:
 	import config_local

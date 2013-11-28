@@ -5,14 +5,15 @@ import os
 from collections import OrderedDict
 import urlparse
 import uuid
+from threading import Lock
+import time
 
 import sqlalchemy as sqa
 import networkx as nx
 import numpy as np
 import scipy.stats
-
-
 from ext.trusas_server import session_server, providers, serialize
+cherrypy = session_server.cp
 import recordtypes
 import schema
 import config
@@ -531,43 +532,84 @@ class ShapeSession:
 	def coordinate_shape(self):
 		return self._shape
 
+
+class StupidTimePriorityStackDict:
+	def __init__(self, max_items):
+		self._lock = Lock()
+		self._data = {}
+		self._max_items = max_items
+	
+	def __getitem__(self, key):
+		with self._lock:
+			data, priority = self._data[key]
+			self._data[key][1] = time.time()
+			return data
+	
+	def __setitem__(self, key, value):
+		with self._lock:
+			if key in self._data:
+				self._data[key][0] = value
+				self._data[key][1] = time.time()
+				return
+			if len(self._data) >= self._max_items:
+				records = ((v[1], k) for k, v in self._data.items())
+				oldest = min(records)[1]
+				del self._data[oldest]
+
+			self._data[key] = [value, time.time()]
+		
+	
 class RouteStatisticsProvider:
 	def __init__(self, db, mypath="route_statistics"):
 		self.mypath = mypath
-		self.sessions = {}
+		self.sessions = StupidTimePriorityStackDict(
+			config.max_cached_sessions)
 		self.db = db
+		self._new_session_lock = Lock()
 	
 	def provides(self):
 		return {self.mypath: "application/json"}
+	
+	def _get_session_key(self, **kwargs):
+		# 'Cause you never know what python does with
+		# the dict ordering
+		items = kwargs.items()
+		items.sort()
+		return "&".join(("%s=%s"%(k, v) for k, v in items))
 
 	def __call__(self, *path, **kwargs):
 		if len(path) == 0:
 			return None
 		if path[0] != self.mypath:
 			return None
+
 		if len(path) >= 2:
 			return self._load_session(path[1])(*path[2:], **kwargs)
 		
 		return self._new_session(**kwargs)
 	
 	def _load_session(self, session_key):
-		if session_key in self.sessions:
+		try:
 			return self.sessions[session_key]
-		kwargs = {k: v[0] for k, v in urlparse.parse_qs(session_key).items()}
-		self._new_session(**kwargs)
-		return self.sessions[session_key]
-
-	def _new_session(self, **kwargs):
-		if '__trusas_uuid' not in kwargs:
-			kwargs['__trusas_uuid'] = str(uuid.uuid4())
-
-		session_key = "&".join(("%s=%s"%(k, v) for k, v in kwargs.items()))
-		if session_key not in self.sessions:
-			self.sessions[session_key] = ShapeSession(self.db, **kwargs)
+		except KeyError:
+			raise cherrypy.HTTPError(409, "The session has expired, client should reload the session.")
 		
-		result = self.sessions[session_key]._handle()
-		result['session_key'] = session_key
-		return serialize.result(result)
+	def _new_session(self, **kwargs):
+		# Allow only one session to be created simultaneously.
+		# Slows down concurrent usage, but makes sure we have
+		# maximum of config.max_cached_sessions + 1 in memory
+		# simultaneously. Otherwise spamming a session would be a
+		# trivial DOS.
+		# Random uuid should in practice take care of the potential
+		# race condition, so the lock could be a bit more granular
+		# for better concurrency.
+		with self._new_session_lock:
+			kwargs['__trusas_uuid'] = str(uuid.uuid4())
+			session_key = "&".join(("%s=%s"%(k, v) for k, v in kwargs.items()))
+			self.sessions[session_key] = ShapeSession(self.db, **kwargs)
+			result = self.sessions[session_key]._handle()
+			result['session_key'] = session_key
+			return serialize.result(result)
 	
 		
 	

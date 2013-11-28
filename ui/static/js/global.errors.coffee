@@ -22,8 +22,6 @@ do_notify = (opts) ->
 	else
 		$.pnotify targetopts
 
-	
-
 
 $(document).ajaxError (event, request, settings, error) ->
 	if request.status == 0
@@ -31,6 +29,14 @@ $(document).ajaxError (event, request, settings, error) ->
 			title: "Data download error"
 			text: "Failed to get data from the server. Make sure you're connected to internet."
 			errorclass: "ajax_nocon"
+	else if request.status == 409
+		do_notify
+			title: "Session expired"
+			text: """
+			Session data expired due to too many concurrent users. You can continue where you left off by reloading the session.
+			<button class="btn btn-primary" onclick="window.location.reload();">Reload session</button>
+			"""
+			errorclass: "session_expired"
 	else
 		do_notify
 			title: "Server error"
