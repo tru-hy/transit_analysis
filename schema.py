@@ -29,6 +29,7 @@ Table("coordinate_measurement", metadata,
 	Column('bearing', ARRAY(Float)),
 	Column('velocity', ARRAY(Float)),
 	Column('finalized', Boolean),
+	Column('unfilterable', Boolean, default=False),
 	)
 
 

@@ -38,6 +38,7 @@ def get_shape_departures(db, shape):
 	to_process = """
 	select departure_id from coordinate_measurement
 	where finalized = true
+	and not unfilterable
 	"""
 
 	q = """
@@ -135,18 +136,22 @@ def filter_shape_routes(db, shape, filter_cls=RouteFilter):
 		if np.sum(valid) < 10: continue
 		try:
 			result = routefilter(ts[valid], cart[valid], departure=departure)
-			if not result:
-				continue
-
 			yield departure, result
 		except RouteException:
-			continue
+			yield departure, None
 
 
-def insert_routed_trace(routed_tbl, departure_tbl, mapping):
+def insert_routed_trace(db, routed_tbl, departure_tbl, mapping):
 	departure, trace = mapping
+	if not trace:
+		db.bind.execute("""
+		update coordinate_measurement set unfilterable=true
+		where departure_id=%s""", departure.departure_id)
+		return
+
 	trace = trace._asdict()
 	del trace['id']
+
 	if departure.routed_trace:
 		departure_tbl.update().\
 			where(departure_tbl.c.departure_id == departure.departure_id).\
@@ -192,7 +197,7 @@ def filter_routes(uri=schema.default_uri, shape=None, verbose=False):
 		mappings = filter_shape_routes(db, shape)
 
 		for mapping in mappings:
-			insert_routed_trace(routed_tbl, departure_tbl, mapping)
+			insert_routed_trace(db, routed_tbl, departure_tbl, mapping)
 			total_fits += 1
 	if verbose:
 		print >>sys.stderr, "%i new traces"%(total_fits,)
