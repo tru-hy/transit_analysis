@@ -38,7 +38,7 @@ def get_shape_departures(db, shape):
 	to_process = """
 	select departure_id from coordinate_measurement
 	where finalized = true
-	and not unfilterable
+	and unfilterable = false
 	"""
 
 	q = """
@@ -133,7 +133,8 @@ def filter_shape_routes(db, shape, filter_cls=RouteFilter):
 		# The dumper shouldn't put out identical timestamps, but
 		# apparently it does.
 		valid = np.flatnonzero(np.diff(ts) > 0)
-		if np.sum(valid) < 10: continue
+		if np.sum(valid) < 10:
+			yield departure, None
 		try:
 			result = routefilter(ts[valid], cart[valid], departure=departure)
 			yield departure, result
