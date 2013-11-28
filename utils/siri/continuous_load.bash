@@ -1,4 +1,4 @@
-#!/usr/bin/bash
+#!/bin/bash
 
 SIRI_URL=$1
 SIRI_NAME=$2
