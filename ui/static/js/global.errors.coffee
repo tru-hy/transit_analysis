@@ -37,6 +37,13 @@ $(document).ajaxError (event, request, settings, error) ->
 			<button class="btn btn-primary" onclick="window.location.reload();">Reload session</button>
 			"""
 			errorclass: "session_expired"
+	else if request.status == 416
+		do_notify
+			title: "No data for given filtering"
+			text: """
+			No drives for given filtering. Try with less strict filters.
+			<button class="btn btn-primary" onclick="window.history.back();">Go back</button>
+			"""
 	else
 		do_notify
 			title: "Server error"

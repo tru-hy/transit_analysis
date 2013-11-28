@@ -193,6 +193,8 @@ def get_shape_stops(db, shape):
 	"""
 	return db.bind.execute(q, shape=shape)
 
+class NoTracesFound(Exception): pass
+
 def get_departure_traces(db, shape, route_variant=None, direction=None,
 			start_date=None, end_date=None, weekdays=None):
 	dep = db.tables['transit_departure']
@@ -238,7 +240,10 @@ def get_departure_traces(db, shape, route_variant=None, direction=None,
 	for r in result:
 		r['time_at_distance_grid'] = np.frombuffer(
 			r['time_at_distance_grid'], dtype=np.float32)
-
+	
+	if len(result) == 0:
+		raise NoTracesFound()
+	
 	return result, range_result
 
 def get_node_path_traces(db, route_nodes, start_date=None, end_date=None, weekdays=None):
@@ -305,6 +310,10 @@ def get_node_path_traces(db, route_nodes, start_date=None, end_date=None, weekda
 	drives_per_shape = db.bind.execute(drives_per_shape, shapes=shape_ids, **qargs)
 	drives_per_shape = [list(d) for d in drives_per_shape]
 	total = float(sum(d[1] for d in drives_per_shape))
+	
+	if total == 0:
+		raise NoTracesFound()
+
 	include_perc = config.max_drives_per_session/total
 	for shape_id, n in drives_per_shape:
 		active_shapes[shape_id]['max_amount'] = max(1, n*include_perc)
@@ -607,7 +616,10 @@ class RouteStatisticsProvider:
 		with self._new_session_lock:
 			kwargs['__trusas_uuid'] = str(uuid.uuid4())
 			session_key = "&".join(("%s=%s"%(k, v) for k, v in kwargs.items()))
-			session = ShapeSession(self.db, **kwargs)
+			try:
+				session = ShapeSession(self.db, **kwargs)
+			except NoTracesFound:
+				raise cherrypy.HTTPError(416, "No traces for given filtering.")
 			self.sessions[urllib.quote(session_key.encode('utf-8'))] = session
 			result = session._handle()
 			result['session_key'] = session_key
