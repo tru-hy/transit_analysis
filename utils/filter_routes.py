@@ -106,7 +106,7 @@ class RouteFilter:
 			timestamp=new_ts,
 			route_distance=smoothed_dist,
 			route_speed=route_speed,
-			time_at_distance_grid=mono_ts,
+			time_at_distance_grid=mono_ts.astype(np.float32).data,
 			distance_bin_width=self.new_dd)
 		return record
 

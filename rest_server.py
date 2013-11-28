@@ -232,7 +232,12 @@ def get_departure_traces(db, shape, route_variant=None, direction=None,
 	
 	range_result = dict(db.bind.execute(rangequery).fetchone())
 
-	return db.bind.execute(query), range_result
+	result = map(dict, db.bind.execute(query))
+	for r in result:
+		r['time_at_distance_grid'] = np.frombuffer(
+			r['time_at_distance_grid'], dtype=np.float32)
+
+	return result, range_result
 
 def get_node_path_traces(db, route_nodes, start_date=None, end_date=None, weekdays=None):
 	graph, positions, shapes = route_graph(db)
@@ -314,7 +319,10 @@ def get_node_path_traces(db, route_nodes, start_date=None, end_date=None, weekda
 		mqargs['max_amount'] = sdata['max_amount']
 		query = """
 		select id, reference_time, distance_bin_width,
-			time_at_distance_grid[trunc(%%(startd)s/distance_bin_width):trunc(%%(endd)s/distance_bin_width)] as time_at_distance_grid,
+			substring(time_at_distance_grid
+				from (trunc(%%(startd)s/distance_bin_width)*4+1)::integer
+				for ((trunc(%%(endd)s/distance_bin_width) - trunc(%%(startd)s/distance_bin_width))*4)::integer
+				) as time_at_distance_grid,
 			date(transit_departure.departure_time) as departure_date,
 			transit_departure.*
 		from routed_trace
@@ -324,7 +332,11 @@ def get_node_path_traces(db, route_nodes, start_date=None, end_date=None, weekda
 		limit %%(max_amount)s
 		"""%(datefilter,)
 		data = db.bind.execute(query, **mqargs)
-		result.extend(map(dict, data))
+		data = map(dict, data)
+		for d in data:
+			d['time_at_distance_grid'] = np.frombuffer(
+				d['time_at_distance_grid'], dtype=np.float32)
+		result.extend(data)
 	
 	# Make sure the grids are of equal size. This may have one-bin
 	# difference due to rounding

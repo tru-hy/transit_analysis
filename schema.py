@@ -1,7 +1,7 @@
 #!/usr/bin/env python2
 
 from sqlalchemy import *
-from sqlalchemy.dialects.postgresql import HSTORE, ARRAY
+from sqlalchemy.dialects.postgresql import HSTORE, ARRAY, BYTEA
 
 import config
 metadata = MetaData()
@@ -14,7 +14,7 @@ Table("routed_trace", metadata,
 	Column('timestamp', ARRAY(Float)),
 	Column('route_distance', ARRAY(Float)),
 	Column('route_speed', ARRAY(Float)),
-	Column('time_at_distance_grid', ARRAY(Float)),
+	Column('time_at_distance_grid', BYTEA),
 	Column('distance_bin_width', Float)
 	)
 
