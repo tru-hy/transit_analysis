@@ -7,6 +7,7 @@ import urlparse
 import uuid
 from threading import Lock
 import time
+import urllib
 
 import sqlalchemy as sqa
 import networkx as nx
@@ -590,7 +591,7 @@ class RouteStatisticsProvider:
 	
 	def _load_session(self, session_key):
 		try:
-			return self.sessions[session_key]
+			return self.sessions[urllib.quote(session_key)]
 		except KeyError:
 			raise cherrypy.HTTPError(409, "The session has expired, client should reload the session.")
 		
@@ -606,8 +607,9 @@ class RouteStatisticsProvider:
 		with self._new_session_lock:
 			kwargs['__trusas_uuid'] = str(uuid.uuid4())
 			session_key = "&".join(("%s=%s"%(k, v) for k, v in kwargs.items()))
-			self.sessions[session_key] = ShapeSession(self.db, **kwargs)
-			result = self.sessions[session_key]._handle()
+			session = ShapeSession(self.db, **kwargs)
+			self.sessions[urllib.quote(session_key.encode('utf-8'))] = session
+			result = session._handle()
 			result['session_key'] = session_key
 			return serialize.result(result)
 	
