@@ -302,7 +302,7 @@ def get_node_path_traces(db, route_nodes, start_date=None, end_date=None, weekda
 		group by shape
 		"""%(datefilter,)
 	shape_ids = tuple(active_shapes.keys())
-	drives_per_shape = db.bind.execute(drives_per_shape, shapes=shape_ids)
+	drives_per_shape = db.bind.execute(drives_per_shape, shapes=shape_ids, **qargs)
 	drives_per_shape = [list(d) for d in drives_per_shape]
 	total = float(sum(d[1] for d in drives_per_shape))
 	include_perc = config.max_drives_per_session/total
