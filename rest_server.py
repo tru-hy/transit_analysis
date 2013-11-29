@@ -320,6 +320,7 @@ def get_node_path_traces(db, route_nodes, start_date=None, end_date=None, weekda
 	
 	path = minnodes
 	result = []
+	stops = {}
 	for shape_id, sdata in active_shapes.iteritems():
 		startd, endd = sdata['distedges']
 		shape = sdata['shape']
@@ -348,6 +349,24 @@ def get_node_path_traces(db, route_nodes, start_date=None, end_date=None, weekda
 			d['time_at_distance_grid'] = np.frombuffer(
 				d['time_at_distance_grid'], dtype=np.float32)
 		result.extend(data)
+
+		shapestops = db.bind.execute("""
+		with ss as (
+		select
+		 unnest(stop_ids) as stop_id,
+		 unnest(distances) as distance
+		from transit_shape_stop
+		where shape_id=%(shape)s
+		)
+		select distance - %(startd)s as distance, ss.stop_id, stop_name, latitude, longitude
+		from ss
+		join transit_stop as s on s.stop_id=ss.stop_id
+		where distance >= %(startd)s and distance <= %(endd)s
+		order by distance
+		""", **mqargs)
+		for ss in shapestops:
+			stops[ss.stop_id] = ss
+
 	
 	# Make sure the grids are of equal size. This may have one-bin
 	# difference due to rounding
@@ -373,8 +392,11 @@ def get_node_path_traces(db, route_nodes, start_date=None, end_date=None, weekda
 	shape_ids = tuple(active_shapes.iterkeys())
 	date_range = db.bind.execute(date_range, shape_ids=shape_ids)
 	date_range = dict(date_range.fetchone())
+	
+	stops = stops.values()
+	stops.sort(key=lambda s: s.distance)
 
-	return result, fake_shape, date_range
+	return result, fake_shape, date_range, stops
 
 @db_provider()
 def departure_traces(db, **kwargs):
@@ -414,9 +436,11 @@ class ShapeSession:
 		if "route_nodes" in self._query:
 			nodes = parsed_query['route_nodes'].split(',')
 			parsed_query['route_nodes'] = nodes
-			self._result, self._shape, date_range = get_node_path_traces(self._db, **parsed_query)
+			(self._result,
+			self._shape,
+			date_range,
+			self._stops) = get_node_path_traces(self._db, **parsed_query)
 			self.date_range = lambda: date_range
-			self._stops = []
 		else:
 			self._result, daterange = get_departure_traces(self._db, **parsed_query)
 			self._result = list(self._result)
