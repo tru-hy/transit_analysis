@@ -101,18 +101,8 @@ def get_active_coordinate_shapes(db):
 
 @db_provider()
 def coordinate_shapes(db, **kwargs):
-	result = db.bind.execute(
-		"""
-		select row_to_json(row) from
-		(
-		select coordinate_shape.shape, coordinates, node_ids, distances
-			from coordinate_shape
-		where coordinate_shape.shape in
-		(select distinct shape from transit_departure
-		where routed_trace notnull)
-		) row
-		""")
-	return serialize.dumps([r[0] for r in result])
+	result = get_active_coordinate_shapes(db)
+	return resultoutput(result)
 
 def get_coordinate_shape(db, shape):
 	result = db.bind.execute("""
