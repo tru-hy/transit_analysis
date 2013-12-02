@@ -136,6 +136,7 @@ class Controller
 		@selected_nodes = new SignalingValue([])
 		@selected_route = new SignalingValue()
 		@reachable_nodes = new SignalingValue(@graph.nodes)
+		@active_route = new SignalingValue(null)
 	
 	selection_url: =>
 		return null if not @selected_route.get()
@@ -254,11 +255,24 @@ _setup_map = (ctrl) ->
 				view_btn.addClass 'disabled'
 				view_btn.removeAttr "href"
 
+		ctrl.active_route.changed.on (route) ->
+			route_map.remove_layer "active-shape"
+			shape = null
+			for i in [0...ctrl.shapes.length]
+				if ctrl.shapes[i].shape == route
+					shape = ctrl.shapes[i]
+					break
+			if not shape
+				return
+
+			route_map.add_route shape.coordinates, "active-shape"
+
 
 _setup_table = (ctrl) ->
 	data = ctrl.routes
 	columns = ({id: n, field: n, name: n} \
 		for n of data[0] when n not in ['id'])
+
 	
 	depcol = $.grep(columns, (e) -> e.id == 'departures')[0]
 	depcol['groupTotalsFormatter'] = (total, coldef) ->
@@ -302,6 +316,14 @@ _setup_table = (ctrl) ->
 	dataView.onRowsChanged.subscribe (e, args) ->
 		grid.invalidateRows(args.rows)
 		grid.render()
+	
+
+	$('body').on "mouseenter", ".slick-row:not(.slick-group)", (ev) ->
+		shape = $($(@).find('.slick-cell')[4]).html() # Hacky...
+		ctrl.active_route.set shape
+	
+	$('body').on "mouseleave", ".slick-row:not(.slick-group)", (ev) ->
+		ctrl.active_route.set null
 
 _setup_router = (ctrl) ->
 	edges = {}
