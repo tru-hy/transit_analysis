@@ -57,7 +57,7 @@ class NicerPollwait:
 	def failure(self):
 		time.sleep(self.retry_time)
 		self.retry_time *= 2
-		self.retry_time = max(self.retry_time, self.max_interval)
+		self.retry_time = min(self.retry_time, self.max_interval)
 		
 def main(url, app_id):
 	request = get_request(url)
@@ -75,6 +75,7 @@ def main(url, app_id):
 			pass
 		except Exception, e:
 			print >>sys.stderr, "Polling failed:", e
+			print >>sys.stderr, "Retry in %f seconds"%(poller.retry_time,)
 			poller.failure()
 			continue
 		poller.success()
