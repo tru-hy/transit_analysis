@@ -186,14 +186,29 @@ def get_shape_stops(db, shape):
 class NoTracesFound(Exception): pass
 
 def get_departure_traces(db, shape, route_variant=None, direction=None,
-			start_date=None, end_date=None, weekdays=None):
+			start_date=None, end_date=None, weekdays=None,
+			start_time=None, end_time=None, timezone_offset=None):
 	dep = db.tables['transit_departure']
 	tr = db.tables['routed_trace']
 	
 	
 	depdate = sqa.func.date(dep.c.departure_time.label('departure_date'))
-	cols = [dep, tr.c.time_at_distance_grid, tr.c.distance_bin_width,
-		depdate]
+
+	# Intrepret departure_time as UTC. Note: For this to work
+	# the server time zone has to be same as the intended timezones
+	# of the timestamp.
+	deptime = sqa.func.timezone('UTC', dep.c.departure_time)
+	deptime = deptime.label('departure_time')
+
+
+	cols = [
+		dep.c.route_name,
+		dep.c.route_variant,
+		dep.c.shape,
+		dep.c.direction,
+		tr.c.time_at_distance_grid, tr.c.distance_bin_width,
+		depdate,
+		deptime]
 	#+ nocols(tr, 'id', 'shape')
 	query = sqa.select(cols).\
 		where(dep.c.routed_trace==tr.c.id).\
@@ -219,10 +234,29 @@ def get_departure_traces(db, shape, route_variant=None, direction=None,
 		query = query.where(depdate >= start_date)
 	if end_date is not None:
 		query = query.where(depdate <= end_date)
+	extraparam = {}
 	if weekdays:
 		numbered = tuple(WEEKDAY_NUMBERS[d] for d in weekdays)
 		q = "extract('dow' from departure_time) in :dow"
-		query = query.where(q).params(dow=numbered)
+		query = query.where(q)
+		extraparam['dow'] = numbered
+	
+	if start_time and end_time:
+		if time_to_minutes(start_time) < time_to_minutes(end_time):
+			clause = """
+			timezone('UTC', departure_time)::time >= :start_time and
+			timezone('UTC', departure_time)::time <= :end_time
+			"""
+		else:
+			clause = """
+			not (timezone('UTC', departure_time)::time >= :end_time and
+			timezone('UTC', departure_time)::time <= :start_time)
+			"""
+		query = query.where(clause)
+		extraparam['start_time'] = start_time
+		extraparam['end_time'] = end_time
+	
+	query = query.params(**extraparam)
 	
 	range_result = dict(db.bind.execute(rangequery).fetchone())
 
@@ -236,7 +270,13 @@ def get_departure_traces(db, shape, route_variant=None, direction=None,
 	
 	return result, range_result
 
-def get_node_path_traces(db, route_nodes, start_date=None, end_date=None, weekdays=None):
+def time_to_minutes(timestr):
+	parts = map(int, timestr.split(':'))
+	return parts[0]*60 + parts[1]
+
+def get_node_path_traces(db, route_nodes, start_date=None, end_date=None,
+		weekdays=None, start_time=None, end_time=None,
+		timezone_offset=None):
 	graph, positions, shapes = route_graph(db)
 	
 	mindist = float("inf")
@@ -289,6 +329,19 @@ def get_node_path_traces(db, route_nodes, start_date=None, end_date=None, weekda
 		datefilter += " and extract(dow from transit_departure.departure_time) in %(weekdays)s"
 		qargs['weekdays'] = tuple(WEEKDAY_NUMBERS[d] for d in weekdays)
 	
+	if start_time and end_time:
+		qargs['start_time'] = start_time
+		qargs['end_time'] = end_time
+		if time_to_minutes(start_time) < time_to_minutes(end_time):
+			datefilter += """
+			and timezone('UTC', departure_time)::time >= %(start_time)s and
+			timezone('UTC', departure_time)::time <= %(end_time)s
+			"""
+		else:
+			datefilter += """
+			and not (timezone('UTC', departure_time)::time >= %(end_time)s and
+			timezone('UTC', departure_time)::time <= %(start_time)s)
+			"""
 
 	drives_per_shape = """
 		select shape, count(routed_trace) as number_of_drives
@@ -312,6 +365,8 @@ def get_node_path_traces(db, route_nodes, start_date=None, end_date=None, weekda
 	result = []
 	stops = {}
 	for shape_id, sdata in active_shapes.iteritems():
+		if 'max_amount' not in sdata:
+			continue
 		startd, endd = sdata['distedges']
 		shape = sdata['shape']
 		mqargs = dict(qargs)
@@ -325,8 +380,11 @@ def get_node_path_traces(db, route_nodes, start_date=None, end_date=None, weekda
 				from (trunc(%%(startd)s/distance_bin_width)*4+1)::integer
 				for ((trunc(%%(endd)s/distance_bin_width) - trunc(%%(startd)s/distance_bin_width))*4)::integer
 				) as time_at_distance_grid,
-			date(transit_departure.departure_time) as departure_date,
-			transit_departure.*
+			transit_departure.route_name,
+			transit_departure.route_variant,
+			transit_departure.direction,
+			transit_departure.shape,
+			timezone('UTC', transit_departure.departure_time) as departure_time
 		from routed_trace
 		join transit_departure on transit_departure.routed_trace=id
 		where transit_departure.shape=%%(shape)s %s
@@ -454,6 +512,7 @@ class ShapeSession:
 		self._timegrid = self._timegrid[:,1:]
 		maxdist = self._timegrid.shape[1]*self._binwidth
 		self._distgrid = np.arange(0, maxdist, self._binwidth)[:-1]
+
 		
 
 	

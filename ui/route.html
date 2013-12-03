@@ -51,6 +51,10 @@
 <script type="text/javascript" src="static/js/moment.min.js"></script>
 <script type="text/javascript" src="static/bootstrap-datepicker/bootstrap-datepicker.js"></script>
 
+<link rel="stylesheet" href="static/bootstrap-3-timepicker/bootstrap-timepicker.min.css" type="text/css"/>
+<script type="text/javascript" src="static/bootstrap-3-timepicker/bootstrap-timepicker.js"></script>
+
+
 <link rel="stylesheet/less" href="static/css/transit_analysis.less" type="text/css"/>
 
 <script type="text/javascript" src="static/js/less-1.4.1.js"></script>
@@ -391,6 +395,7 @@ _setup_plots = (ctrl) ->
 			durations.push [minutes, durarr[i]]
 
 		$.plot $("#duration-by-tod"), [{data: durations, color: "rgb(0,0,0,0.1)"}],
+			selection: mode: 'x'
 			series:
 				shadowSize: 0
 				points:
@@ -464,7 +469,24 @@ _setup_date_select = (ctrl) ->
 	for weekday in sel_weekdays
 		el = weekdayel.find("input[name=#{weekday}]")
 		el.attr "checked", "checked"
+	
+	#$("#timepicker input").timepicker
+	#	showMeridian: false
+	#	template: "dropdown"
 
+	starttime = param.start_time or "12:00"
+	endtime = param.end_time or "12:00"
+
+	start_time_el = $("#timepicker [name='starttime']")
+		.val(starttime)
+		.timepicker
+			showMeridian: false
+	
+	end_time_el = $("#timepicker [name='endtime']")
+		.val(endtime)
+		.timepicker
+			showMeridian: false
+	
 	update_date = ->
 		newstart = startel.val()
 		newend = endel.val()
@@ -482,10 +504,19 @@ _setup_date_select = (ctrl) ->
 		
 		if newweekdays.length == 0
 			valid = false
-
+		
 		if "#{newweekdays}" != "#{sel_weekdays}"
 			changed = true
 
+		newstarttime = start_time_el.val()
+		newendtime = end_time_el.val()
+
+		if newstarttime != starttime
+			changed = true
+
+		if newendtime != endtime
+			changed = true
+		
 		activate_btn = changed and valid
 		filterbutton.toggleClass "disabled", not activate_btn
 		filterbutton.toggleClass "btn-default", not activate_btn
@@ -500,6 +531,13 @@ _setup_date_select = (ctrl) ->
 			end_date: newend
 			weekdays: newweekdays.join(',')
 
+		if newstarttime != newendtime
+			opts.start_time = newstarttime
+			opts.end_time = newendtime
+		else
+			opts.start_time = null
+			opts.end_time = null
+
 		for k, v of opts
 			param[k] = v
 		
@@ -508,6 +546,8 @@ _setup_date_select = (ctrl) ->
 	weekdayel.find('input').change update_date
 	startel.change update_date
 	endel.change update_date
+	start_time_el.change update_date
+	end_time_el.change update_date
 
 _setup_drive_stats = (ctrl) ->
 	departures = ctrl.departures
@@ -623,6 +663,16 @@ $ ->
 	<tr>
 		<td id="session-info"></td>
 		<td id="date-selector">
+			<span class="input-timerange" id="timepicker">
+				<span class="bootstrap-timepicker">
+    				<input type="text" class="add-on input-xs" name="starttime" />
+				</span>
+    				<span>-</span>
+				<span class="bootstrap-timepicker">
+    				<input type="text" class="add-on input-xs" name="endtime" />
+				</span>
+			</span>
+
 			<span class="input-daterange" id="datepicker">
     				<input type="text" class="input-xs" name="start" />
     				<span>-</span>
