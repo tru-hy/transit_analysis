@@ -455,13 +455,12 @@ def axispercentile(values, percentiles):
 	if values.size == 0:
 		return np.empty((len(percentiles), 0))
 	
-
-	# TODO: WOW, how slow is this!
+	# Multiple percentiles in one go seems to be in newer
+	# scipy/numpy, but we'll have to hack it like this
+	# for now
 	results = np.empty((len(percentiles), values.shape[1]))
 	for p, percentile in enumerate(percentiles):
-		for i in range(values.shape[1]):
-			results[p][i] = scipy.stats.scoreatpercentile(values[:,i],
-				percentile*100)
+		results[p] = np.percentile(values, percentile*100, axis=0)
 	return results
 
 percs = (
