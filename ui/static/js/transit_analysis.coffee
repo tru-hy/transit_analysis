@@ -465,6 +465,7 @@ class TransAnal.StopSeqPlot
 		width = @$el.width()
 		height = @$el.height()/2
 		stats = @ctrl.inter_stop_duration_stats
+		stopstats = @ctrl.stop_and_inter_stop_duration_stats
 		stops = @ctrl.stops
 		cursor = @ctrl.cursor
 		x = new FisheyeOrdinal(
@@ -571,12 +572,18 @@ class TransAnal.StopSeqPlot
 			<table>
 			<tr>
 			  <th>&lt 50%</th><td>
-			  #{Math.round stats.median[d[0].index]}s
+			  <span style="font-size: x-small">
+			  (#{Math.round stats.median[d[0].index]}s)
+			  </span>
+			  #{Math.round stopstats.median[d[0].index]}s
 			  </td>
 			</tr>
 			<tr>
 			  <th>&lt 75%</th><td>
-			  #{Math.round stats.highq[d[0].index]}s
+			  <span style="font-size: x-small">
+			  (#{Math.round stats.highq[d[0].index]}s)
+			  </span>
+			  #{Math.round stopstats.highq[d[0].index]}s
 			  </td>
 			</tr>
 

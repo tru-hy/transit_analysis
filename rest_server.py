@@ -601,6 +601,15 @@ class ShapeSession:
 			durs.append(self.span_durations(s, e))
 		results = axispercentile(np.array(durs).T, zip(*percs)[1])
 		return {percs[i][0]: results[i] for i in range(len(percs))}
+	
+	def stop_and_inter_stop_duration_stats(self):
+		durs = []
+		for i in range(len(self._stops)-1):
+			s = self._stops[i].distance - self.stop_span/2.0
+			e = self._stops[i+1].distance - self.stop_span/2.0
+			durs.append(self.span_durations(s, e))
+		results = axispercentile(np.array(durs).T, zip(*percs)[1])
+		return {percs[i][0]: results[i] for i in range(len(percs))}
 		
 	def distance_bin(self, distance):
 		return min(max(0, int(distance/self._binwidth)),
