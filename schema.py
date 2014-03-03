@@ -47,6 +47,10 @@ Table("transit_departure", metadata,
 		ForeignKey("routed_trace.id", ondelete="SET NULL"),
 		nullable=True,
 		index=True),
+	# Allows for fast front-page fetches
+	Index('route_idx', 'route_name', 'route_variant',
+		'departure_time', 'direction', 'routed_trace'),
+
 	Column('attributes', HSTORE),
 	Column('schedule_id', String(255))
 	)
