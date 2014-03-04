@@ -2,6 +2,7 @@
 
 <script type="text/javascript" src="static/js/spin.js"></script>
 <script type="text/javascript" src="static/js/jquery.spin.js"></script>
+<script type="text/javascript" src="static/js/jquery-deparam.js"></script>
 <script type="text/javascript" src="static/js/underscore.js"></script>
 <script type="text/javascript" src="static/js/coffee-script.js"></script>
 <script type="text/javascript" src="static/js/bean.js"></script>
@@ -20,6 +21,13 @@
 
 <script type="text/javascript" src="static/js/polymaps.js"></script>
 <script type="text/javascript" src="/static/js/d3.v3.js"></script>
+
+<link rel="stylesheet" href="static/bootstrap-datepicker/datepicker.css" type="text/css"/>
+<script type="text/javascript" src="static/js/moment.min.js"></script>
+<script type="text/javascript" src="static/bootstrap-datepicker/bootstrap-datepicker.js"></script>
+
+<link rel="stylesheet" href="static/bootstrap-3-timepicker/bootstrap-timepicker.min.css" type="text/css"/>
+<script type="text/javascript" src="static/bootstrap-3-timepicker/bootstrap-timepicker.js"></script>
 
 <script type="text/coffeescript" src="static/js/trusas.core.coffee"></script>
 <script type="text/coffeescript" src="static/js/trusas.data.coffee"></script>
@@ -97,7 +105,7 @@
 
 <script type="text/coffeescript">
 route_link_template = _.template """
-<a href="<%= url %>" class="view-route-link">View</a>
+<a data-orighref="<%= url %>" class="view-route-link stateful-link">View</a>
 """
 
 class Signal
@@ -124,15 +132,16 @@ class Controller
 		routes = $.getJSON '/resources/transit_routes.json'
 		shapes = $.getJSON '/resources/coordinate_shapes.json'
 		graph = $.getJSON '/resources/route_graph_edges.json'
+		date_range = $.getJSON '/resources/available_date_range.json'
 		promise = $.Deferred()
-		$.when(routes, shapes, graph).done (args...) ->
+		$.when(routes, shapes, graph, date_range).done (args...) ->
 			args = (a[0] for a in args)
 			self = new Controller(args...)
 			promise.resolve self
 
 		return promise
 
-	constructor: (@routes, @shapes, @graph) ->
+	constructor: (@routes, @shapes, @graph, @date_range) ->
 		@selected_nodes = new SignalingValue([])
 		@selected_route = new SignalingValue()
 		@reachable_nodes = new SignalingValue(@graph.nodes)
@@ -231,7 +240,7 @@ _setup_map = (ctrl) ->
 		controls = $(route_map.el).append("""
 		<div class="map_controls">
 		<button class="clear_selection btn btn-danger">Clear selection</button>
-		<a class="view_route btn btn-success pull-right">View route</a>
+		<a class="view_route btn btn-success pull-right stateful-link">View route</a>
 		</div>
 		""")
 		clear_btn = controls.find('.clear_selection')
@@ -250,7 +259,8 @@ _setup_map = (ctrl) ->
 		ctrl.selected_route.changed.on (sel) ->
 			if sel
 				view_btn.removeClass 'disabled'
-				view_btn.attr "href", ctrl.selection_url()
+				view_btn.data "orighref", ctrl.selection_url()
+				_update_link_state view_btn[0]
 			else
 				view_btn.addClass 'disabled'
 				view_btn.removeAttr "href"
@@ -267,7 +277,6 @@ _setup_map = (ctrl) ->
 
 			route_map.add_route shape.coordinates, "active-shape"
 
-
 _setup_table = (ctrl) ->
 	data = ctrl.routes
 	columns = ({id: n, field: n, name: n} \
@@ -282,6 +291,7 @@ _setup_table = (ctrl) ->
 	routecol['formatter'] = (args...) ->
 		row = args[4]
 		urlargs = _.pick row, 'route_variant', 'direction', 'shape'
+
 		url = "route.html?"+$.param urlargs
 		return route_link_template url: url
 		
@@ -324,6 +334,7 @@ _setup_table = (ctrl) ->
 	
 	$('body').on "mouseleave", ".slick-row:not(.slick-group)", (ev) ->
 		ctrl.active_route.set null
+	console.log "Done"
 
 _setup_router = (ctrl) ->
 	edges = {}
@@ -392,18 +403,194 @@ _setup_router = (ctrl) ->
 
 		ctrl.selected_route.set minshape.nodes
 		ctrl.reachable_nodes.set reachable_nodes
+
+# Yep. Almost copypaste from route.html
+_setup_date_select = (ctrl) ->
+	#times = (new Date(d.departure_time) for d in ctrl.departures)
+	allweekdays = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+	console.log ctrl
+	mindate = ctrl.date_range['mindate']
+	maxdate = ctrl.date_range['maxdate']
+	
+	param = $.deparam(window.location.search[1...])
+	start = new Date(param.start_date ? mindate)
+	end = new Date(param.end_date ? maxdate)
+	
+	moment_format = "YYYY-MM-DD"
+	# The picker has it's own formatter, but it seems
+	# to be impossible to access due to the very annoying
+	# jquery plugin interface thingy
+	picker_format = "yyyy-mm-dd"
+
+	starts = moment(start).format(moment_format)
+	ends = moment(end).format(moment_format)
+	element = $('#datepicker')
+	startel = element.find("[name='start']").val(starts)
+	endel = element.find("[name='end']").val(ends)
+
+	cal = element.datepicker
+		format: picker_format
+		startDate: moment(mindate).format(moment_format)
+		endDate: moment(maxdate).format(moment_format)
+		autoclose: true
+	
+	if param.weekdays?
+		sel_weekdays = param.weekdays.split(',')
+	else
+		sel_weekdays = allweekdays
+	sel_weekdays.sort()
+	
+	weekdayel = $("#date-selector .weekdays")
+	for weekday in sel_weekdays
+		el = weekdayel.find("input[name=#{weekday}]")
+		el.attr "checked", "checked"
+	
+	#$("#timepicker input").timepicker
+	#	showMeridian: false
+	#	template: "dropdown"
+
+	starttime = param.start_time or "12:00"
+	endtime = param.end_time or "12:00"
+
+	start_time_el = $("#timepicker [name='starttime']")
+		.val(starttime)
+		.timepicker
+			showMeridian: false
+	
+	end_time_el = $("#timepicker [name='endtime']")
+		.val(endtime)
+		.timepicker
+			showMeridian: false
+	
+	update_date = ->
 		
+		
+		opts = {}
+
+		newweekdays = []
+		for el in weekdayel.find('input')
+			el = $ el
+			if el.attr('checked')
+				newweekdays.push el.attr "name"
+		newweekdays.sort()
+		
+		if newweekdays.length == 0
+			valid = false
+		
+		if newweekdays.length != 7
+			opts.weekdays = newweekdays.join ','
+
+		if "#{newweekdays}" != "#{sel_weekdays}"
+			changed = true
+
+		newstarttime = start_time_el.val()
+		newendtime = end_time_el.val()
+
+		if newstarttime != newendtime
+			opts.start_time = newstarttime
+			opts.end_time = newendtime
+
+		newstartdate = startel.val()
+		newenddate = endel.val()
+		if newstartdate != starts or newenddate != ends
+			opts.start_date = newstartdate
+			opts.end_date = newenddate
+
+		window.history.replaceState null, null, "?"+$.param(opts)
+		_update_link_states()
+	
+	weekdayel.find('input').change update_date
+	startel.change update_date
+	endel.change update_date
+	start_time_el.change update_date
+	end_time_el.change update_date
+
+_update_link_state = (link) ->
+	console.log link
+	$link = $ link
+	orig = $link.data 'orighref'
+	if typeof orig is 'undefined'
+		return
+	$link.attr("href", $link.data('orighref'))
+	param = $.deparam $link[0].search[1...]
+	state_param = $.deparam window.location.search[1...]
+	$link[0].search = '?' + $.param _.extend(param, state_param)
+
+# Hacking to ensure that "stateful links" carry
+# the current "state" (ie. url get parameters)
+_update_link_states = ->
+	links = $ ".stateful-link"
+	links.each (i, e) -> _update_link_state e
+
+# A slow hack for handling dynamically inserted
+# nodes
+document.addEventListener 'DOMNodeInserted', (ev) ->
+	links = $(ev.relatedNode).find ".stateful-link"
+	links.each (i, e) -> _update_link_state e
+	
+
 $ ->
 	Controller.Create().done (ctrl) ->
+		_setup_date_select ctrl
 		_setup_map ctrl
 		_setup_table ctrl
 		_setup_router ctrl
+		_update_link_states()
 		
 		loader = $ "#global-loader"
 		loader.spin(false)
 		loader.remove()
 
 </script>
+
+<table class="header-container">
+	<tr>
+		<td id="session-info"></td>
+		<td id="date-selector">
+			<span class="input-timerange" id="timepicker">
+				<span class="bootstrap-timepicker">
+    				<input type="text" class="add-on input-xs" name="starttime" />
+				</span>
+    				<span>-</span>
+				<span class="bootstrap-timepicker">
+    				<input type="text" class="add-on input-xs" name="endtime" />
+				</span>
+			</span>
+
+			<span class="input-daterange" id="datepicker">
+    				<input type="text" class="input-xs" name="start" />
+    				<span>-</span>
+    				<input type="text" class="input-xs" name="end" />
+			</span>
+
+			<div class="btn-group weekdays">
+				<label class="btn btn-default btn-xs">
+					<input type="checkbox" name="mon" /> Mon
+				</label>
+				<label class="btn btn-default btn-xs">
+					<input type="checkbox" name="tue" /> Tue
+				</label>
+				<label class="btn btn-default btn-xs">
+					<input type="checkbox" name="wed" /> Wed
+				</label>
+				<label class="btn btn-default btn-xs">
+					<input type="checkbox" name="thu" /> Thu
+				</label>
+				<label class="btn btn-default btn-xs">
+					<input type="checkbox" name="fri" /> Fri
+				</label>
+				<label class="btn btn-default btn-xs">
+					<input type="checkbox" name="sat" /> Sat
+				</label>
+				<label class="btn btn-default btn-xs">
+					<input type="checkbox" name="sun" /> Sun
+				</label>
+			</div>
+		</td>
+	</tr>
+</table>
+
+
 <div class="widget-container route-select-widgets row">
 	<div class="col-md-6" style="height: 425px">
 		<axislabel class="toplabel acttopbin">Route map</axislabel>

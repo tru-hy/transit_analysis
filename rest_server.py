@@ -90,6 +90,16 @@ def transit_routes(db, **kwargs):
 		"""%dict(cols=cols))
 	return resultoutput(result)
 
+@db_provider()
+def available_date_range(db, **kwargs):
+	date_range = """
+		select min(departure_time) as mindate, max(departure_time) as maxdate
+		from transit_departure
+		where routed_trace notnull"""
+	result = list(db.bind.execute(date_range))[0]
+	result = dict(result)
+	return serialize.dumps(result)
+
 def get_active_coordinate_shapes(db):
 	return db.bind.execute("""
 		select coordinate_shape.shape, coordinates, node_ids, distances
@@ -718,7 +728,8 @@ def main(uri=schema.default_uri):
 		coordinate_shapes(db),
 		departure_traces(db),
 		RouteStatisticsProvider(db),
-		route_graph_edges(db)
+		route_graph_edges(db),
+		available_date_range(db),
 		]
 	
 	resources = session_server.ResourceServer(providers)
